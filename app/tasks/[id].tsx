@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TextInput, ScrollView, TouchableOpacity, Text, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,48 +7,83 @@ import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
 import { useStore } from '@/store';
 import GlassCard from '@/components/ui/GlassCard';
-import { Calendar, Clock, Trash2 } from 'lucide-react-native';
+import { Calendar, Clock, Trash2, Plus, Square, SquareCheck as CheckSquare } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
+import { useTasks } from '@/hooks/useSupabase';
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { tasks, updateTask, deleteTask } = useStore();
+  const { createTask, updateTask, deleteTask, generateSubtasks } = useTasks();
   
-  const task = tasks.find(t => t.id === id) || {
-    id: '',
-    title: '',
-    description: '',
-    dueDate: new Date().toISOString(),
-    priority: 'medium',
-    isCompleted: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description || '');
-  const [dueDate, setDueDate] = useState(new Date(task.dueDate));
-  const [dueTime, setDueTime] = useState(task.dueTime ? new Date(task.dueTime) : null);
-  const [priority, setPriority] = useState(task.priority);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState(new Date());
+  const [dueTime, setDueTime] = useState<Date | null>(null);
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; isCompleted: boolean }>>([]);
+  const [newSubtask, setNewSubtask] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const handleSave = () => {
-    updateTask(task.id, {
+  useEffect(() => {
+    if (id) {
+      // Load task data
+      // Implementation here
+    }
+  }, [id]);
+
+  const handleSave = async () => {
+    const taskData = {
       title,
       description,
       dueDate: dueDate.toISOString(),
       dueTime: dueTime?.toISOString(),
       priority,
-    });
+      subtasks,
+    };
+
+    if (id) {
+      await updateTask(id as string, taskData);
+    } else {
+      const task = await createTask(taskData);
+      if (task) {
+        // Generate AI subtasks
+        const aiSubtasks = await generateSubtasks(title, description);
+        if (aiSubtasks) {
+          // Handle AI generated subtasks
+        }
+      }
+    }
     router.back();
   };
 
-  const handleDelete = () => {
-    deleteTask(task.id);
-    router.back();
+  const handleDelete = async () => {
+    if (id) {
+      await deleteTask(id as string);
+      router.back();
+    }
+  };
+
+  const handleAddSubtask = () => {
+    if (newSubtask.trim()) {
+      setSubtasks([
+        ...subtasks,
+        {
+          id: Math.random().toString(),
+          title: newSubtask.trim(),
+          isCompleted: false,
+        },
+      ]);
+      setNewSubtask('');
+    }
+  };
+
+  const toggleSubtask = (subtaskId: string) => {
+    setSubtasks(subtasks.map(st =>
+      st.id === subtaskId ? { ...st, isCompleted: !st.isCompleted } : st
+    ));
   };
 
   const PriorityButton = ({ value, label }: { value: string; label: string }) => (
@@ -58,7 +93,7 @@ export default function TaskDetailScreen() {
         priority === value && styles.priorityButtonActive,
         { backgroundColor: getPriorityColor(value, priority === value ? 1 : 0.1) },
       ]}
-      onPress={() => setPriority(value)}
+      onPress={() => setPriority(value as 'low' | 'medium' | 'high')}
     >
       <Text
         style={[
@@ -127,6 +162,49 @@ export default function TaskDetailScreen() {
                 <PriorityButton value="low" label="Low" />
                 <PriorityButton value="medium" label="Medium" />
                 <PriorityButton value="high" label="High" />
+              </View>
+            </View>
+
+            <View style={styles.subtasksContainer}>
+              <Text style={styles.sectionTitle}>Subtasks</Text>
+              <View style={styles.subtaskInput}>
+                <TextInput
+                  style={styles.subtaskTextInput}
+                  value={newSubtask}
+                  onChangeText={setNewSubtask}
+                  placeholder="Add subtask"
+                  placeholderTextColor={Colors.secondaryText}
+                  onSubmitEditing={handleAddSubtask}
+                />
+                <TouchableOpacity
+                  style={styles.addSubtaskButton}
+                  onPress={handleAddSubtask}
+                >
+                  <Plus size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.subtaskList}>
+                {subtasks.map(subtask => (
+                  <TouchableOpacity
+                    key={subtask.id}
+                    style={styles.subtaskItem}
+                    onPress={() => toggleSubtask(subtask.id)}
+                  >
+                    {subtask.isCompleted ? (
+                      <CheckSquare size={20} color={Colors.primary} />
+                    ) : (
+                      <Square size={20} color={Colors.text} />
+                    )}
+                    <Text
+                      style={[
+                        styles.subtaskText,
+                        subtask.isCompleted && styles.completedSubtask,
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
@@ -289,5 +367,46 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Medium',
     fontSize: 16,
     color: 'white',
+  },
+  subtasksContainer: {
+    marginTop: 20,
+  },
+  subtaskInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  subtaskTextInput: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    padding: 8,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  addSubtaskButton: {
+    backgroundColor: Colors.primary,
+    padding: 8,
+    borderRadius: 8,
+  },
+  subtaskList: {
+    marginTop: 8,
+  },
+  subtaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subtaskText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+    marginLeft: 8,
+  },
+  completedSubtask: {
+    textDecorationLine: 'line-through',
+    color: Colors.secondaryText,
   },
 });
