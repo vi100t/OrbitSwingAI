@@ -12,10 +12,12 @@ import HeatmapView from '@/components/dashboard/HeatmapView';
 import QuickActions from '@/components/dashboard/QuickActions';
 import Header from '@/components/shared/Header';
 import { useRouter } from 'expo-router';
+import { useUserProfile } from '@/hooks/useSupabase';
 
 export default function DashboardScreen() {
   const { habits, tasks, initializeData } = useStore();
   const router = useRouter();
+  const { profile, loading: profileLoading } = useUserProfile();
 
   useEffect(() => {
     // Initialize sample data for demonstration
@@ -23,64 +25,80 @@ export default function DashboardScreen() {
   }, [initializeData]);
 
   const completedTasksToday = tasks.filter(
-    task => task.isCompleted && new Date(task.completedAt).toDateString() === new Date().toDateString()
+    (task) =>
+      task.isCompleted &&
+      new Date(task.completedAt).toDateString() === new Date().toDateString()
   ).length;
 
   const totalTasksToday = tasks.filter(
-    task => new Date(task.dueDate).toDateString() === new Date().toDateString()
+    (task) =>
+      new Date(task.dueDate).toDateString() === new Date().toDateString()
   ).length;
 
-  const upcomingTasks = tasks.filter(
-    task => !task.isCompleted && new Date(task.dueDate) > new Date()
-  ).slice(0, 3);
+  const upcomingTasks = tasks
+    .filter((task) => !task.isCompleted && new Date(task.dueDate) > new Date())
+    .slice(0, 3);
+
+  const displayName =
+    profile?.display_name || profile?.first_name || 'Productivity Pro';
 
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
         <Header title="Dashboard" showVoice={true} />
-        
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Good day,</Text>
-            <Text style={styles.nameText}>Productivity Pro</Text>
+            <Text style={styles.nameText}>{displayName}</Text>
           </View>
 
-          <TaskSummary 
-            completedTasks={completedTasksToday} 
+          <TaskSummary
+            completedTasks={completedTasksToday}
             totalTasks={totalTasksToday}
             onPress={() => router.push('/tasks')}
           />
-          
+
           <Text style={styles.sectionTitle}>Habit Streaks</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.streaksContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.streaksContainer}
+          >
             {habits.map((habit) => (
-              <HabitStreak 
-                key={habit.id} 
-                title={habit.name} 
-                streak={habit.currentStreak} 
+              <HabitStreak
+                key={habit.id}
+                title={habit.name}
+                streak={habit.currentStreak}
                 color={habit.color}
                 onPress={() => {}}
               />
             ))}
           </ScrollView>
-          
+
           <View style={styles.heatmapContainer}>
             <Text style={styles.sectionTitle}>Monthly Activity</Text>
             <HeatmapView />
           </View>
-          
+
           <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
-          <UpcomingTasks tasks={upcomingTasks} onPress={(id) => router.push(`/tasks/${id}`)} />
-          
+          <UpcomingTasks
+            tasks={upcomingTasks}
+            onPress={(id) => router.push(`/tasks/${id}`)}
+          />
+
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <QuickActions />
-          
+
           <AIAssistant
             suggestion="You have 3 overdue tasks. Would you like to reschedule them?"
             onAccept={() => {}}
             onDismiss={() => {}}
           />
-          
+
           <View style={styles.spacer} />
         </ScrollView>
       </SafeAreaView>

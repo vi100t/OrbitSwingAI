@@ -3,31 +3,36 @@ import { StyleSheet, Text, View, Pressable } from 'react-native';
 import GlassCard from '@/components/ui/GlassCard';
 import Colors from '@/constants/Colors';
 import { useRouter } from 'expo-router';
-import { SquareCheck as CheckSquare, Timer, SquareStack, Calendar } from 'lucide-react-native';
+import {
+  SquareCheck as CheckSquare,
+  Timer,
+  SquareStack,
+  Calendar,
+} from 'lucide-react-native';
 
 const QuickActions: React.FC = () => {
   const router = useRouter();
 
   const actions = [
-    { 
-      icon: <CheckSquare size={24} color={Colors.primary} />, 
-      label: 'New Task', 
-      onPress: () => router.push('/tasks/create')
+    {
+      icon: <CheckSquare size={24} color={Colors.primary} />,
+      label: 'New Task',
+      onPress: () => router.push('/tasks/new'),
     },
-    { 
-      icon: <Timer size={24} color="#E91E63" />, 
-      label: 'Pomodoro', 
-      onPress: () => router.push('/pomodoro')
+    {
+      icon: <Timer size={24} color="#E91E63" />,
+      label: 'Pomodoro',
+      onPress: () => router.push('/pomodoro'),
     },
-    { 
-      icon: <SquareStack size={24} color="#009688" />, 
-      label: 'Eisenhower', 
-      onPress: () => router.push('/eisenhower') 
+    {
+      icon: <SquareStack size={24} color="#009688" />,
+      label: 'Eisenhower',
+      onPress: () => router.push('/eisenhower'),
     },
-    { 
-      icon: <Calendar size={24} color="#FF9800" />, 
-      label: 'Calendar', 
-      onPress: () => router.push('/calendar') 
+    {
+      icon: <Calendar size={24} color="#FF9800" />,
+      label: 'Calendar',
+      onPress: () => router.push('/calendar'),
     },
   ];
 

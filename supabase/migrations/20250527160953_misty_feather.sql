@@ -55,6 +55,21 @@
       - `date` (date)
       - `completed` (boolean)
 
+    - `user_profiles`
+      - `id` (uuid, primary key)
+      - `first_name` (text)
+      - `last_name` (text)
+      - `display_name` (text)
+      - `avatar_url` (text)
+      - `bio` (text)
+      - `timezone` (text)
+      - `language` (text)
+      - `theme` (text)
+      - `notification_preferences` (jsonb)
+      - `work_hours` (jsonb)
+      - `created_at` (timestamptz)
+      - `updated_at` (timestamptz)
+
   2. Security
     - Enable RLS on all tables
     - Add policies for authenticated users to manage their own data
@@ -125,6 +140,23 @@ CREATE TABLE habit_completions (
   completed boolean DEFAULT true
 );
 
+-- Create user_profiles table
+CREATE TABLE user_profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+  first_name text,
+  last_name text,
+  display_name text,
+  avatar_url text,
+  bio text,
+  timezone text DEFAULT 'UTC',
+  language text DEFAULT 'en',
+  theme text DEFAULT 'system',
+  notification_preferences jsonb DEFAULT '{"email": true, "push": true, "reminders": true}',
+  work_hours jsonb DEFAULT '{"start": "09:00", "end": "17:00", "days": [1,2,3,4,5]}',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 -- Enable Row Level Security
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subtasks ENABLE ROW LEVEL SECURITY;
@@ -132,6 +164,7 @@ ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE note_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habit_completions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
 CREATE POLICY "Users can manage their own tasks"
@@ -199,3 +232,17 @@ CREATE POLICY "Users can manage completions of their habits"
     WHERE habits.id = habit_completions.habit_id 
     AND habits.user_id = auth.uid()
   ));
+
+-- Create policy
+CREATE POLICY "Users can view and update their own profile"
+  ON user_profiles
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+-- Create trigger to update updated_at
+CREATE TRIGGER set_updated_at
+  BEFORE UPDATE ON user_profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();

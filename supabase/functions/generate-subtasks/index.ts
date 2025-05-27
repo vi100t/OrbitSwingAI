@@ -1,61 +1,62 @@
+// Follow this setup guide to integrate the Deno runtime into your application:
+// https://deno.land/manual/examples/deploy_node_server
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'npm:@supabase/supabase-js@2.39.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+
+interface GenerateSubtasksRequest {
+  title: string;
+  description: string;
+}
+
+interface Subtask {
+  title: string;
+  isCompleted: boolean;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type',
 };
 
-interface GenerateSubtasksRequest {
-  taskTitle: string;
-  taskDescription?: string;
-}
-
-serve(async (req) => {
+serve(async (req: Request) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { taskTitle, taskDescription } = await req.json() as GenerateSubtasksRequest;
+    const { title, description } =
+      (await req.json()) as GenerateSubtasksRequest;
 
-    // Initialize Supabase client
+    // Create a Supabase client with the Auth context of the function
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
-        auth: {
-          persistSession: false,
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
         },
       }
     );
 
-    // Use built-in AI to generate subtasks
-    const { data: subtasks, error } = await supabaseClient.functions.invoke('ai-generate-subtasks', {
-      body: {
-        taskTitle,
-        taskDescription,
-      },
+    // Here you would implement your AI subtask generation logic
+    // For now, let's return a mock response
+    const mockSubtasks: Subtask[] = [
+      { title: 'Research topic', isCompleted: false },
+      { title: 'Create outline', isCompleted: false },
+      { title: 'Write first draft', isCompleted: false },
+    ];
+
+    return new Response(JSON.stringify({ subtasks: mockSubtasks }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
     });
-
-    if (error) {
-      throw error;
-    }
-
-    return new Response(
-      JSON.stringify(subtasks),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      },
-    );
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      },
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
+    });
   }
 });

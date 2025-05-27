@@ -2,32 +2,76 @@ import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import GlassCard from '@/components/ui/GlassCard';
 import Colors from '@/constants/Colors';
-import { Calendar, Clock, SquareCheck as CheckSquare, Square } from 'lucide-react-native';
+import {
+  Calendar,
+  Clock,
+  SquareCheck as CheckSquare,
+  Square,
+} from 'lucide-react-native';
 import dayjs from 'dayjs';
+import { useTasks } from '@/hooks/useSupabase';
+import { supabase } from '@/lib/supabase';
 
 type SubTask = {
   id: string;
+  task_id: string;
   title: string;
-  isCompleted: boolean;
+  is_completed: boolean;
+  created_at: string;
 };
 
 type Props = {
   task: {
     id: string;
+    user_id: string;
     title: string;
-    description?: string;
-    dueDate: string;
-    dueTime?: string;
-    isCompleted: boolean;
-    priority: 'low' | 'medium' | 'high';
+    description: string | null;
+    due_date: string;
+    due_time: string | null;
+    is_completed: boolean;
+    completed_at: string | null;
+    priority: string;
+    category: string | null;
+    created_at: string;
+    updated_at: string;
     subtasks?: SubTask[];
   };
-  onToggleComplete: () => void;
-  onToggleSubtask?: (subtaskId: string) => void;
   onPress: () => void;
 };
 
-const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onToggleSubtask, onPress }) => {
+const TaskItem: React.FC<Props> = ({ task, onPress }) => {
+  const { updateTask } = useTasks();
+
+  const handleToggleComplete = async () => {
+    try {
+      await updateTask(task.id, {
+        is_completed: !task.is_completed,
+        completed_at: !task.is_completed ? new Date().toISOString() : null,
+      });
+    } catch (error) {
+      console.error('Error toggling task completion:', error);
+    }
+  };
+
+  const handleToggleSubtask = async (subtaskId: string) => {
+    try {
+      const subtask = task.subtasks?.find((st) => st.id === subtaskId);
+      if (subtask) {
+        const { error } = await supabase
+          .from('subtasks')
+          .update({ is_completed: !subtask.is_completed })
+          .eq('id', subtaskId)
+          .eq('task_id', task.id);
+
+        if (error) {
+          console.error('Error updating subtask:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling subtask completion:', error);
+    }
+  };
+
   const getPriorityColor = () => {
     switch (task.priority) {
       case 'high':
@@ -41,45 +85,50 @@ const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onToggleSubtask, on
 
   return (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
-      <GlassCard style={[styles.card, task.isCompleted && styles.completedCard]}>
+      <GlassCard
+        style={[styles.card, task.is_completed && styles.completedCard]}
+      >
         <View style={styles.container}>
           <TouchableOpacity
             style={styles.checkbox}
-            onPress={onToggleComplete}
+            onPress={handleToggleComplete}
             activeOpacity={0.7}
           >
-            {task.isCompleted ? (
+            {task.is_completed ? (
               <CheckSquare size={20} color={Colors.primary} />
             ) : (
               <Square size={20} color={Colors.secondaryText} />
             )}
           </TouchableOpacity>
-          
+
           <View style={styles.content}>
             <View style={styles.titleRow}>
               <Text
                 style={[
                   styles.title,
-                  task.isCompleted && styles.completedTitle,
+                  task.is_completed && styles.completedTitle,
                 ]}
                 numberOfLines={1}
               >
                 {task.title}
               </Text>
               <View
-                style={[styles.priorityIndicator, { backgroundColor: getPriorityColor() }]}
+                style={[
+                  styles.priorityIndicator,
+                  { backgroundColor: getPriorityColor() },
+                ]}
               />
             </View>
-            
+
             {task.subtasks && task.subtasks.length > 0 && (
               <View style={styles.subtasksContainer}>
-                {task.subtasks.map(subtask => (
+                {task.subtasks.map((subtask) => (
                   <TouchableOpacity
                     key={subtask.id}
                     style={styles.subtaskRow}
-                    onPress={() => onToggleSubtask?.(subtask.id)}
+                    onPress={() => handleToggleSubtask(subtask.id)}
                   >
-                    {subtask.isCompleted ? (
+                    {subtask.is_completed ? (
                       <CheckSquare size={16} color={Colors.primary} />
                     ) : (
                       <Square size={16} color={Colors.secondaryText} />
@@ -87,7 +136,7 @@ const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onToggleSubtask, on
                     <Text
                       style={[
                         styles.subtaskText,
-                        subtask.isCompleted && styles.completedSubtask,
+                        subtask.is_completed && styles.completedSubtask,
                       ]}
                     >
                       {subtask.title}
@@ -96,20 +145,20 @@ const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onToggleSubtask, on
                 ))}
               </View>
             )}
-            
+
             <View style={styles.metaContainer}>
               <View style={styles.metaItem}>
                 <Calendar size={14} color={Colors.secondaryText} />
                 <Text style={styles.metaText}>
-                  {dayjs(task.dueDate).format('MMM D')}
+                  {dayjs(task.due_date).format('MMM D')}
                 </Text>
               </View>
-              
-              {task.dueTime && (
+
+              {task.due_time && (
                 <View style={styles.metaItem}>
                   <Clock size={14} color={Colors.secondaryText} />
                   <Text style={styles.metaText}>
-                    {dayjs(task.dueTime).format('h:mm A')}
+                    {dayjs(task.due_time).format('h:mm A')}
                   </Text>
                 </View>
               )}

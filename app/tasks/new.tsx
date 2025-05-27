@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,17 +8,15 @@ import {
   Text,
   Platform,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
-import { useStore } from '@/store';
 import GlassCard from '@/components/ui/GlassCard';
 import {
   Calendar,
   Clock,
-  Trash2,
   Plus,
   Square,
   SquareCheck as CheckSquare,
@@ -27,11 +25,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
 import { useTasks } from '@/hooks/useSupabase';
 import { supabase } from '@/lib/supabase';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
+import { useAuth } from '@/contexts/AuthContext';
 
-export default function TaskDetailScreen() {
-  const { id } = useLocalSearchParams();
+export default function NewTaskScreen() {
   const router = useRouter();
-  const { createTask, updateTask, deleteTask, generateSubtasks } = useTasks();
+  const { createTask, generateSubtasks, createSubtasks } = useTasks();
+  const { session } = useAuth();
+  const [userId] = useState(() => uuidv4()); // Generate a UUID for this session
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -45,62 +47,105 @@ export default function TaskDetailScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  useEffect(() => {
-    if (id) {
-      // Load task data
-      // Implementation here
-    }
-  }, [id]);
-
   const handleSave = async () => {
+    console.log('handleSave called');
     try {
+      if (!session?.user?.id) {
+        alert('Please sign in to create tasks');
+        router.push('/login');
+        return;
+      }
+
+      if (!title.trim()) {
+        console.log('Title validation failed');
+        alert('Please enter a task title');
+        return;
+      }
+
+      console.log('Current subtasks state:', subtasks);
+
       const taskData = {
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim() || null,
         due_date: dueDate.toISOString(),
         due_time: dueTime?.toISOString() ?? null,
         priority,
-        user_id: 'default', // You'll need to replace this with the actual user ID
+        user_id: session.user.id,
         is_completed: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Saving task with data:', taskData);
+      console.log(
+        'About to create task with data:',
+        JSON.stringify(taskData, null, 2)
+      );
 
-      if (id) {
-        const updatedTask = await updateTask(id as string, taskData);
-        if (!updatedTask) {
-          console.error('Failed to update task');
-          return;
-        }
-        console.log('Task updated successfully:', updatedTask);
-      } else {
-        const newTask = await createTask(taskData);
-        if (!newTask) {
-          console.error('Failed to create task');
-          return;
-        }
-        console.log('Task created successfully:', newTask);
-
-        // Generate AI subtasks
-        const aiSubtasks = await generateSubtasks(title, description);
-        if (aiSubtasks) {
-          console.log('Generated subtasks:', aiSubtasks);
-          // Handle AI generated subtasks
-        }
+      // Create task using useTasks hook
+      const newTask = await createTask(taskData);
+      if (!newTask) {
+        console.error('Failed to create task');
+        alert('Failed to create task');
+        return;
       }
+
+      console.log('Task created successfully:', newTask);
+
+      // Create subtasks if any exist
+      if (subtasks.length > 0) {
+        console.log('Creating subtasks...');
+        const subtaskData = subtasks.map((subtask) => ({
+          title: subtask.title,
+          is_completed: subtask.isCompleted,
+        }));
+
+        const insertedSubtasks = await createSubtasks(newTask.id, subtaskData);
+        if (!insertedSubtasks) {
+          console.error('Failed to create subtasks');
+          alert('Failed to create subtasks');
+        } else {
+          console.log('Subtasks created successfully:', insertedSubtasks);
+        }
+      } else {
+        console.log('No subtasks to create');
+      }
+
+      // Generate AI subtasks
+      try {
+        console.log('Generating AI subtasks...');
+        const aiSubtasks = await generateSubtasks(title, description);
+        if (aiSubtasks && aiSubtasks.length > 0) {
+          const aiSubtaskData = aiSubtasks.map((subtask: string) => ({
+            title: subtask,
+            is_completed: false,
+          }));
+
+          const insertedAiSubtasks = await createSubtasks(
+            newTask.id,
+            aiSubtaskData
+          );
+          if (!insertedAiSubtasks) {
+            console.error('Failed to create AI subtasks');
+            alert('Failed to create AI subtasks');
+          } else {
+            console.log(
+              'AI subtasks created successfully:',
+              insertedAiSubtasks
+            );
+          }
+        } else {
+          console.log('No AI subtasks generated');
+        }
+      } catch (error) {
+        console.error('Error generating AI subtasks:', error);
+        alert('Failed to generate AI subtasks: ' + (error as Error).message);
+      }
+
+      console.log('Task creation completed, navigating back...');
       router.back();
     } catch (error) {
-      console.error('Error saving task:', error);
-      // You might want to show an error message to the user here
-    }
-  };
-
-  const handleDelete = async () => {
-    if (id) {
-      await deleteTask(id as string);
-      router.back();
+      console.error('Error in handleSave:', error);
+      alert('An error occurred while creating the task. Please try again.');
     }
   };
 
@@ -160,9 +205,12 @@ export default function TaskDetailScreen() {
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title={id ? 'Edit Task' : 'New Task'} showBack />
+        <Header title="New Task" showBack />
 
-        <ScrollView style={styles.content}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+        >
           <GlassCard style={styles.card}>
             <TextInput
               style={styles.titleInput}
@@ -255,20 +303,17 @@ export default function TaskDetailScreen() {
                 ))}
               </View>
             </View>
-
-            {id && (
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={handleDelete}
-              >
-                <Trash2 size={20} color={Colors.error} />
-                <Text style={styles.deleteText}>Delete Task</Text>
-              </TouchableOpacity>
-            )}
           </GlassCard>
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Task</Text>
+          <TouchableOpacity
+            style={[styles.saveButton, { opacity: 0.9 }]}
+            onPress={() => {
+              console.log('Save button pressed');
+              handleSave();
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.saveButtonText}>Create Task</Text>
           </TouchableOpacity>
         </ScrollView>
 
@@ -321,7 +366,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 20,
+    paddingBottom: 40,
   },
   card: {
     marginBottom: 20,
@@ -386,27 +434,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 14,
   },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    marginTop: 20,
-  },
-  deleteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    color: Colors.error,
-    marginLeft: 8,
-  },
   saveButton: {
     backgroundColor: Colors.primary,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 40,
+    marginTop: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   saveButtonText: {
     fontFamily: 'Poppins-Medium',
@@ -453,5 +495,17 @@ const styles = StyleSheet.create({
   completedSubtask: {
     textDecorationLine: 'line-through',
     color: Colors.secondaryText,
+  },
+  testButton: {
+    backgroundColor: 'red',
+    padding: 10,
+    margin: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  testButtonText: {
+    color: 'white',
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
   },
 });

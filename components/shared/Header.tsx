@@ -1,5 +1,11 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { Mic, Bell, ChevronLeft } from 'lucide-react-native';
@@ -39,20 +45,23 @@ const Header: React.FC<Props> = ({
       <View style={styles.container}>
         <View style={styles.leftContainer}>
           {showBack && (
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
               <ChevronLeft size={24} color={Colors.text} />
             </TouchableOpacity>
           )}
           <Text style={styles.title}>{title}</Text>
         </View>
-        
+
         <View style={styles.rightContainer}>
           {showVoice && (
             <TouchableOpacity onPress={onVoicePress} style={styles.iconButton}>
               <Mic size={20} color={Colors.text} />
             </TouchableOpacity>
           )}
-          
+
           {showNotifications && (
             <TouchableOpacity style={styles.iconButton}>
               <Bell size={20} color={Colors.text} />
@@ -66,9 +75,21 @@ const Header: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   headerBg: {
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
     borderBottomWidth: 1,
+    marginRight: 20,
+    marginLeft: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: Colors.glassShadow,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
   },
   headerBgWeb: {
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
@@ -82,6 +103,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    borderRadius: 20,
   },
   leftContainer: {
     flexDirection: 'row',

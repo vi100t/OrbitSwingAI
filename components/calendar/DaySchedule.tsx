@@ -16,36 +16,36 @@ const WORK_HOURS = 12; // 8 AM to 8 PM
 
 const DaySchedule: React.FC<Props> = ({ tasks, date }) => {
   const router = useRouter();
-  
+
   const tasksByHour: Record<number, Task[]> = {};
-  
+
   // Group tasks by hour
-  tasks.forEach(task => {
+  tasks.forEach((task) => {
     const hour = task.dueTime ? new Date(task.dueTime).getHours() : 9; // Default to 9 AM
-    
+
     if (!tasksByHour[hour]) {
       tasksByHour[hour] = [];
     }
-    
+
     tasksByHour[hour].push(task);
   });
-  
+
   const renderTimeSlots = () => {
     const slots = [];
-    
+
     for (let i = 8; i < 8 + WORK_HOURS; i++) {
       // Format hour in 12-hour format
       const formattedHour = i % 12 === 0 ? 12 : i % 12;
       const amPm = i < 12 ? 'AM' : 'PM';
-      
+
       slots.push(
         <View key={`hour-${i}`} style={styles.timeSlot}>
           <Text style={styles.timeText}>{`${formattedHour} ${amPm}`}</Text>
           <View style={styles.slotLine} />
-          
+
           {/* Tasks in this time slot */}
           <View style={styles.tasksContainer}>
-            {tasksByHour[i]?.map(task => (
+            {tasksByHour[i]?.map((task) => (
               <TouchableOpacity
                 key={task.id}
                 style={[
@@ -64,10 +64,10 @@ const DaySchedule: React.FC<Props> = ({ tasks, date }) => {
         </View>
       );
     }
-    
+
     return slots;
   };
-  
+
   if (tasks.length === 0) {
     return (
       <GlassCard style={styles.emptyCard}>
@@ -81,7 +81,7 @@ const DaySchedule: React.FC<Props> = ({ tasks, date }) => {
       </GlassCard>
     );
   }
-  
+
   return (
     <GlassCard style={styles.card}>
       <View style={[styles.schedule, { height: WORK_HOURS * HOUR_HEIGHT }]}>

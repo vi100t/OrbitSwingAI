@@ -1,31 +1,59 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  Switch,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
 import GlassCard from '@/components/ui/GlassCard';
-import { ChevronRight, Bell, CloudSun as CloudSync, Moon, CircleHelp as HelpCircle, BookOpen } from 'lucide-react-native';
+import {
+  ChevronRight,
+  Bell,
+  CloudSun as CloudSync,
+  Moon,
+  CircleHelp as HelpCircle,
+  BookOpen,
+  User,
+} from 'lucide-react-native';
 import { useStore } from '@/store';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { settings, updateSettings } = useStore();
+  const { signOut } = useAuth();
 
   const toggleSetting = (key: keyof typeof settings) => {
     updateSettings({ [key]: !settings[key] });
   };
 
-  const SettingSwitch = ({ 
-    title, 
-    description, 
-    value, 
-    onToggle, 
-    icon 
-  }: { 
-    title: string; 
-    description: string; 
-    value: boolean; 
-    onToggle: () => void; 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  const SettingSwitch = ({
+    title,
+    description,
+    value,
+    onToggle,
+    icon,
+  }: {
+    title: string;
+    description: string;
+    value: boolean;
+    onToggle: () => void;
     icon: React.ReactNode;
   }) => (
     <View style={styles.settingRow}>
@@ -43,13 +71,13 @@ export default function SettingsScreen() {
     </View>
   );
 
-  const SettingLink = ({ 
-    title, 
-    icon, 
-    onPress 
-  }: { 
-    title: string; 
-    icon: React.ReactNode; 
+  const SettingLink = ({
+    title,
+    icon,
+    onPress,
+  }: {
+    title: string;
+    icon: React.ReactNode;
     onPress: () => void;
   }) => (
     <TouchableOpacity style={styles.linkRow} onPress={onPress}>
@@ -63,10 +91,23 @@ export default function SettingsScreen() {
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
         <Header title="Settings" />
-        
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.sectionTitle}>Account</Text>
+
+          <GlassCard style={styles.card}>
+            <SettingLink
+              title="Profile Settings"
+              icon={<User size={22} color={Colors.primary} />}
+              onPress={() => router.push('/settings/profile')}
+            />
+          </GlassCard>
+
           <Text style={styles.sectionTitle}>App Settings</Text>
-          
+
           <GlassCard style={styles.card}>
             <SettingSwitch
               title="Notifications"
@@ -75,9 +116,9 @@ export default function SettingsScreen() {
               onToggle={() => toggleSetting('notifications')}
               icon={<Bell size={22} color={Colors.primary} />}
             />
-            
+
             <View style={styles.divider} />
-            
+
             <SettingSwitch
               title="Dark Mode"
               description="Use dark theme throughout the app"
@@ -85,9 +126,9 @@ export default function SettingsScreen() {
               onToggle={() => toggleSetting('darkMode')}
               icon={<Moon size={22} color={Colors.primary} />}
             />
-            
+
             <View style={styles.divider} />
-            
+
             <SettingSwitch
               title="Cloud Sync"
               description="Sync your data across all devices"
@@ -96,29 +137,29 @@ export default function SettingsScreen() {
               icon={<CloudSync size={22} color={Colors.primary} />}
             />
           </GlassCard>
-          
+
           <Text style={styles.sectionTitle}>Help & Support</Text>
-          
+
           <GlassCard style={styles.card}>
             <SettingLink
               title="Tutorials"
               icon={<BookOpen size={22} color={Colors.primary} />}
               onPress={() => {}}
             />
-            
+
             <View style={styles.divider} />
-            
+
             <SettingLink
               title="Help Center"
               icon={<HelpCircle size={22} color={Colors.primary} />}
               onPress={() => {}}
             />
           </GlassCard>
-          
+
           <View style={styles.appInfo}>
             <Text style={styles.appVersion}>Version 1.0.0</Text>
           </View>
-          
+
           <View style={styles.spacer} />
         </ScrollView>
       </SafeAreaView>
