@@ -1,7 +1,13 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Chrome as Home, CalendarDays, SquareCheck as CheckSquare, FileText, Settings } from 'lucide-react-native';
+import {
+  Home,
+  CalendarDays,
+  SquareCheck as CheckSquare,
+  FileText,
+  Settings,
+} from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { Platform } from 'react-native';
 
@@ -13,11 +19,18 @@ export default function TabLayout() {
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.secondaryText,
-        tabBarBackground: () => (
-          Platform.OS === 'web' ? 
-            <View style={styles.tabBarBackgroundWeb} /> : 
-            <BlurView intensity={80} tint="light" style={styles.tabBarBackground} />
-        ),
+        animation: 'shift',
+        tabBarItemStyle: styles.tabBarItemStyle,
+        tabBarBackground: () =>
+          Platform.OS === 'web' ? (
+            <View style={styles.tabBarBackgroundWeb} />
+          ) : (
+            <BlurView
+              intensity={80}
+              tint="light"
+              style={styles.tabBarBackground}
+            />
+          ),
       }}
     >
       <Tabs.Screen
@@ -33,7 +46,9 @@ export default function TabLayout() {
         options={{
           title: 'Tasks',
           tabBarLabel: 'Tasks',
-          tabBarIcon: ({ color, size }) => <CheckSquare size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <CheckSquare size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -41,7 +56,9 @@ export default function TabLayout() {
         options={{
           title: 'Calendar',
           tabBarLabel: 'Calendar',
-          tabBarIcon: ({ color, size }) => <CalendarDays size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <CalendarDays size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -49,7 +66,9 @@ export default function TabLayout() {
         options={{
           title: 'Notes',
           tabBarLabel: 'Notes',
-          tabBarIcon: ({ color, size }) => <FileText size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <FileText size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -57,7 +76,9 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarLabel: 'Settings',
-          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Settings size={size} color={color} />
+          ),
         }}
       />
     </Tabs>
@@ -67,12 +88,14 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    bottom: 15,
+    bottom: 20,
     left: 20,
     right: 20,
     elevation: 0,
     borderRadius: 15,
     height: 65,
+    marginLeft: 10,
+    marginRight: 10,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -81,6 +104,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 15,
     borderTopWidth: 0,
+    paddingBottom: 0,
+  },
+  tabBarItemStyle: {
+    alignItems: 'center',
+    flexDirection: 'row',
   },
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
@@ -92,5 +120,5 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     backdropFilter: 'blur(10px)',
-  }
+  },
 });
