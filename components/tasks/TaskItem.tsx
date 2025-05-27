@@ -1,19 +1,33 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import GlassCard from '@/components/ui/GlassCard';
-import { Task } from '@/types/task';
 import Colors from '@/constants/Colors';
 import { Calendar, Clock, SquareCheck as CheckSquare, Square } from 'lucide-react-native';
 import dayjs from 'dayjs';
 
+type SubTask = {
+  id: string;
+  title: string;
+  isCompleted: boolean;
+};
+
 type Props = {
-  task: Task;
+  task: {
+    id: string;
+    title: string;
+    description?: string;
+    dueDate: string;
+    dueTime?: string;
+    isCompleted: boolean;
+    priority: 'low' | 'medium' | 'high';
+    subtasks?: SubTask[];
+  };
   onToggleComplete: () => void;
+  onToggleSubtask?: (subtaskId: string) => void;
   onPress: () => void;
 };
 
-const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onPress }) => {
-  // Get color based on priority
+const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onToggleSubtask, onPress }) => {
   const getPriorityColor = () => {
     switch (task.priority) {
       case 'high':
@@ -57,11 +71,29 @@ const TaskItem: React.FC<Props> = ({ task, onToggleComplete, onPress }) => {
               />
             </View>
             
-            {task.subTasks && task.subTasks.length > 0 && (
+            {task.subtasks && task.subtasks.length > 0 && (
               <View style={styles.subtasksContainer}>
-                <Text style={styles.subtaskInfo}>
-                  {task.subTasks.filter(st => st.isCompleted).length} of {task.subTasks.length} subtasks completed
-                </Text>
+                {task.subtasks.map(subtask => (
+                  <TouchableOpacity
+                    key={subtask.id}
+                    style={styles.subtaskRow}
+                    onPress={() => onToggleSubtask?.(subtask.id)}
+                  >
+                    {subtask.isCompleted ? (
+                      <CheckSquare size={16} color={Colors.primary} />
+                    ) : (
+                      <Square size={16} color={Colors.secondaryText} />
+                    )}
+                    <Text
+                      style={[
+                        styles.subtaskText,
+                        subtask.isCompleted && styles.completedSubtask,
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
             
@@ -98,10 +130,11 @@ const styles = StyleSheet.create({
   },
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   checkbox: {
     marginRight: 12,
+    marginTop: 2,
   },
   content: {
     flex: 1,
@@ -128,16 +161,26 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   subtasksContainer: {
-    marginTop: 4,
+    marginTop: 8,
   },
-  subtaskInfo: {
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  subtaskText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 14,
+    color: Colors.text,
+    marginLeft: 8,
+  },
+  completedSubtask: {
+    textDecorationLine: 'line-through',
     color: Colors.secondaryText,
   },
   metaContainer: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginTop: 12,
   },
   metaItem: {
     flexDirection: 'row',
