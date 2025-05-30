@@ -54,6 +54,7 @@
     "stream.js": "^1.0.1",
     "supabase": "^2.23.4",
     "uuid": "^11.1.0",
+    "websocket.js": "^0.1.12",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
