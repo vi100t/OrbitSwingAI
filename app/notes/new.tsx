@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Text,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,6 +32,7 @@ export default function NoteDetailScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
+  const [color, setColor] = useState('#ffffff');
 
   useEffect(() => {
     if (id) {
@@ -40,6 +42,7 @@ export default function NoteDetailScreen() {
           setTitle(noteData.title);
           setContent(noteData.content || '');
           setTags(noteData.tags || []);
+          setColor(noteData.color || '#ffffff');
         }
       };
       loadNote();
@@ -47,6 +50,11 @@ export default function NoteDetailScreen() {
   }, [id, fetchNoteById]);
 
   const handleSave = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Title is required');
+      return;
+    }
+
     try {
       if (!session?.user?.id) {
         console.error('No user session');
@@ -56,7 +64,8 @@ export default function NoteDetailScreen() {
       const noteData = {
         title: title.trim(),
         content: content.trim() || null,
-        tags: tags,
+        tags,
+        color,
       };
 
       console.log('handleSave: Preparing to save note with data:', noteData);
@@ -81,6 +90,7 @@ export default function NoteDetailScreen() {
       router.back();
     } catch (error) {
       console.error('handleSave: Error saving note:', error);
+      Alert.alert('Error', 'Failed to save note');
     }
   };
 
@@ -371,3 +381,14 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
 });
+
+const getPriorityColor = (priority: string, opacity: number = 1) => {
+  switch (priority) {
+    case 'high':
+      return `rgba(244, 67, 54, ${opacity})`;
+    case 'medium':
+      return `rgba(255, 152, 0, ${opacity})`;
+    default:
+      return `rgba(33, 150, 243, ${opacity})`;
+  }
+};

@@ -27,11 +27,13 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
 import { useTasks } from '@/hooks/useSupabase';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { createTask, updateTask, deleteTask, generateSubtasks } = useTasks();
+  const { session } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -44,39 +46,96 @@ export default function TaskDetailScreen() {
   const [newSubtask, setNewSubtask] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
     if (id) {
       // Load task data
-      // Implementation here
+      const loadTask = async () => {
+        try {
+          const { data: task, error } = await supabase
+            .from('tasks')
+            .select('*, subtasks(*)')
+            .eq('id', id)
+            .single();
+
+          if (error) {
+            console.error('Error loading task:', error);
+            return;
+          }
+
+          if (task) {
+            setTitle(task.title);
+            setDescription(task.description || '');
+            setDueDate(new Date(task.due_date));
+            setDueTime(task.due_time ? new Date(task.due_time) : null);
+            setPriority(task.priority as 'low' | 'medium' | 'high');
+            setIsCompleted(task.is_completed);
+            setSubtasks(
+              task.subtasks?.map((st: any) => ({
+                id: st.id,
+                title: st.title,
+                isCompleted: st.is_completed,
+              })) || []
+            );
+          }
+        } catch (err) {
+          console.error('Error in loadTask:', err);
+        }
+      };
+
+      loadTask();
     }
   }, [id]);
 
   const handleSave = async () => {
     try {
+      if (!session?.user?.id) {
+        console.error('No user session');
+        return;
+      }
+
       const taskData = {
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim() || null,
         due_date: dueDate.toISOString(),
         due_time: dueTime?.toISOString() ?? null,
         priority,
-        user_id: 'default', // You'll need to replace this with the actual user ID
-        is_completed: false,
-        created_at: new Date().toISOString(),
+        is_completed: isCompleted,
         updated_at: new Date().toISOString(),
+        subtasks: subtasks.map((subtask) => ({
+          id: subtask.id,
+          title: subtask.title,
+          is_completed: subtask.isCompleted,
+          task_id: id as string,
+        })),
       };
 
-      console.log('Saving task with data:', taskData);
-
       if (id) {
-        const updatedTask = await updateTask(id as string, taskData);
+        // For updates, we need to ensure we're sending all fields
+        const updateData = {
+          title: taskData.title,
+          description: taskData.description,
+          due_date: taskData.due_date,
+          due_time: taskData.due_time,
+          priority: taskData.priority,
+          is_completed: taskData.is_completed,
+          updated_at: taskData.updated_at,
+          subtasks: taskData.subtasks,
+        };
+
+        const updatedTask = await updateTask(id as string, updateData);
         if (!updatedTask) {
           console.error('Failed to update task');
           return;
         }
         console.log('Task updated successfully:', updatedTask);
       } else {
-        const newTask = await createTask(taskData);
+        const newTask = await createTask({
+          ...taskData,
+          user_id: session.user.id,
+          created_at: new Date().toISOString(),
+        });
         if (!newTask) {
           console.error('Failed to create task');
           return;
@@ -90,17 +149,26 @@ export default function TaskDetailScreen() {
           // Handle AI generated subtasks
         }
       }
+
       router.back();
     } catch (error) {
       console.error('Error saving task:', error);
-      // You might want to show an error message to the user here
     }
   };
 
   const handleDelete = async () => {
-    if (id) {
-      await deleteTask(id as string);
-      router.back();
+    try {
+      if (!id) return;
+
+      const success = await deleteTask(id as string);
+      if (success) {
+        console.log('Task deleted successfully');
+        router.back();
+      } else {
+        console.error('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
     }
   };
 
@@ -160,7 +228,29 @@ export default function TaskDetailScreen() {
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title={id ? 'Edit Task' : 'New Task'} showBack />
+        <Header
+          title={id ? 'Edit Task' : 'New Task'}
+          showBack
+          showNotifications={false}
+          rightComponent={
+            <View style={styles.headerButtons}>
+              {id && (
+                <TouchableOpacity
+                  onPress={handleDelete}
+                  style={[styles.headerButton, styles.deleteButton]}
+                >
+                  <Trash2 size={24} color={Colors.error} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={handleSave}
+                style={[styles.headerButton, styles.saveButton]}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
 
         <ScrollView style={styles.content}>
           <GlassCard style={styles.card}>
@@ -255,21 +345,7 @@ export default function TaskDetailScreen() {
                 ))}
               </View>
             </View>
-
-            {id && (
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={handleDelete}
-              >
-                <Trash2 size={20} color={Colors.error} />
-                <Text style={styles.deleteText}>Delete Task</Text>
-              </TouchableOpacity>
-            )}
           </GlassCard>
-
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Task</Text>
-          </TouchableOpacity>
         </ScrollView>
 
         {showDatePicker && (
@@ -387,31 +463,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    marginTop: 20,
-  },
-  deleteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    color: Colors.error,
-    marginLeft: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
   saveButton: {
     backgroundColor: Colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 40,
+    paddingHorizontal: 16,
   },
   saveButtonText: {
-    fontFamily: 'Poppins-Medium',
+    color: Colors.card,
     fontSize: 16,
-    color: 'white',
+    fontWeight: '600',
   },
   subtasksContainer: {
     marginTop: 20,
@@ -453,5 +514,14 @@ const styles = StyleSheet.create({
   completedSubtask: {
     textDecorationLine: 'line-through',
     color: Colors.secondaryText,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
   },
 });

@@ -17,6 +17,7 @@ type Props = {
   showVoice?: boolean;
   showNotifications?: boolean;
   onVoicePress?: () => void;
+  rightComponent?: React.ReactNode;
 };
 
 const Header: React.FC<Props> = ({
@@ -25,6 +26,7 @@ const Header: React.FC<Props> = ({
   showVoice = false,
   showNotifications = true,
   onVoicePress,
+  rightComponent,
 }) => {
   const router = useRouter();
 
@@ -56,6 +58,7 @@ const Header: React.FC<Props> = ({
         </View>
 
         <View style={styles.rightContainer}>
+          {rightComponent}
           {showVoice && (
             <TouchableOpacity onPress={onVoicePress} style={styles.iconButton}>
               <Mic size={20} color={Colors.text} />

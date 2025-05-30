@@ -65,3 +65,42 @@ export const cleanupAuth = () => {
     authSubscription = null;
   }
 };
+
+export async function createNote(
+  title: string,
+  content: string,
+  tags: string[],
+  color: string = '#ffffff' // Default to white if no color is provided
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data: note, error: noteError } = await supabase
+    .from('notes')
+    .insert({
+      title,
+      content,
+      user_id: user.id,
+      color,
+    })
+    .select()
+    .single();
+
+  if (noteError) throw noteError;
+  if (!note) throw new Error('Failed to create note');
+
+  // Insert tags
+  if (tags.length > 0) {
+    const { error: tagsError } = await supabase.from('note_tags').insert(
+      tags.map((tag) => ({
+        note_id: note.id,
+        tag,
+      }))
+    );
+    if (tagsError) throw tagsError;
+  }
+
+  return note;
+}

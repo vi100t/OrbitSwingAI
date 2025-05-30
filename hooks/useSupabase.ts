@@ -9,6 +9,7 @@ type Tables = Database['public']['Tables'];
 
 // Global channel instance
 let globalChannel: any = null;
+let globalNotesChannel: any = null;
 
 export function useTasks() {
   const { session } = useAuth();
@@ -27,23 +28,64 @@ export function useTasks() {
 
       setLoading(true);
       console.log('Fetching tasks for user:', session.user.id);
-      const { data: tasks, error: tasksError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('due_date', { ascending: true });
+
+      // Add retry logic for tasks fetch
+      let retryCount = 0;
+      const maxRetries = 3;
+      let tasks = null;
+      let tasksError = null;
+
+      while (retryCount < maxRetries) {
+        try {
+          const result = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('due_date', { ascending: true });
+
+          tasks = result.data;
+          tasksError = result.error;
+          break;
+        } catch (err) {
+          console.log(`Retry ${retryCount + 1} failed:`, err);
+          retryCount++;
+          if (retryCount === maxRetries) throw err;
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * retryCount)
+          );
+        }
+      }
 
       if (tasksError) {
         console.error('Error fetching tasks:', tasksError);
         throw tasksError;
       }
 
-      // Fetch subtasks for all tasks
+      // Fetch subtasks for all tasks with retry logic
       const taskIds = tasks?.map((task) => task.id) || [];
-      const { data: subtasks, error: subtasksError } = await supabase
-        .from('subtasks')
-        .select('*')
-        .in('task_id', taskIds);
+      let subtasks = null;
+      let subtasksError = null;
+      retryCount = 0;
+
+      while (retryCount < maxRetries) {
+        try {
+          const result = await supabase
+            .from('subtasks')
+            .select('*')
+            .in('task_id', taskIds);
+
+          subtasks = result.data;
+          subtasksError = result.error;
+          break;
+        } catch (err) {
+          console.log(`Retry ${retryCount + 1} failed:`, err);
+          retryCount++;
+          if (retryCount === maxRetries) throw err;
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * retryCount)
+          );
+        }
+      }
 
       if (subtasksError) {
         console.error('Error fetching subtasks:', subtasksError);
@@ -58,7 +100,6 @@ export function useTasks() {
             subtasks?.filter((subtask) => subtask.task_id === task.id) || [],
         })) || [];
 
-      console.log('Fetched tasks with subtasks:', tasksWithSubtasks);
       setTasks(tasksWithSubtasks);
     } catch (err) {
       console.error('Error in fetchTasks:', err);
@@ -77,63 +118,56 @@ export function useTasks() {
 
   // Set up realtime subscription
   useEffect(() => {
-    if (!session?.user?.id) return;
-
-    const setupSubscription = async () => {
-      // Clean up existing subscription
-      if (channelRef.current) {
-        console.log('Cleaning up existing subscription');
-        await channelRef.current.unsubscribe();
-        channelRef.current = null;
+    if (!session?.user?.id) {
+      // Clean up channel if user logs out
+      if (globalChannel) {
+        console.log('User logged out, removing tasks channel');
+        supabase.removeChannel(globalChannel);
+        globalChannel = null;
         isSubscribedRef.current = false;
       }
+      return;
+    }
 
-      // Only create a new subscription if we're not already subscribed
-      if (!isSubscribedRef.current) {
-        console.log('Setting up new subscription');
-        const channel = supabase.channel('tasks_changes').on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'tasks',
-            filter: `user_id=eq.${session.user.id}`,
-          },
-          (payload: RealtimePostgresChangesPayload<Tables['tasks']['Row']>) => {
-            console.log('Task change detected:', payload);
-            fetchTasks();
-          }
-        );
-
-        try {
-          await channel.subscribe((status) => {
-            console.log('Subscription status:', status);
-            if (status === 'SUBSCRIBED') {
-              isSubscribedRef.current = true;
-              channelRef.current = channel;
-            }
-          });
-        } catch (err) {
-          console.error('Error subscribing to channel:', err);
-          isSubscribedRef.current = false;
+    // Use the global channel instance
+    if (!globalChannel) {
+      console.log('Setting up new subscription');
+      globalChannel = supabase.channel('tasks_changes').on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          console.log('Task change detected:', payload);
+          fetchTasks();
         }
+      );
+
+      // Subscribe only once
+      globalChannel.subscribe(
+        (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => {
+          console.log('Subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            isSubscribedRef.current = true;
+          }
+        }
+      );
+    }
+
+    // Cleanup function
+    return () => {
+      console.log('Running cleanup');
+      if (globalChannel) {
+        console.log('Removing channel');
+        supabase.removeChannel(globalChannel);
+        globalChannel = null;
+        isSubscribedRef.current = false;
       }
     };
-
-    setupSubscription();
-
-    return () => {
-      const cleanup = async () => {
-        if (channelRef.current) {
-          console.log('Cleaning up subscription on unmount');
-          await channelRef.current.unsubscribe();
-          channelRef.current = null;
-          isSubscribedRef.current = false;
-        }
-      };
-      cleanup();
-    };
-  }, [session?.user?.id, fetchTasks]);
+  }, [session?.user?.id]); // Only depend on user ID
 
   // Force refresh tasks
   const refreshTasks = React.useCallback(() => {
@@ -216,56 +250,130 @@ export function useTasks() {
     }
   }
 
-  async function updateTask(id: string, updates: Tables['tasks']['Update']) {
+  async function updateTask(id: string, updates: any) {
     try {
       if (!session?.user?.id) {
         throw new Error('No user session');
       }
 
-      // If we're updating subtasks, handle them separately
-      if ('subtasks' in updates) {
-        const subtasks = updates.subtasks as Tables['subtasks']['Update'][];
-        delete updates.subtasks;
+      console.log('Starting task update:', {
+        taskId: id,
+        userId: session.user.id,
+        updates,
+      });
 
-        // Update the task first
-        const { data: task, error: taskError } = await supabase
-          .from('tasks')
-          .update(updates)
-          .eq('id', id)
-          .eq('user_id', session.user.id)
-          .select()
-          .single();
+      // Extract subtasks from updates if they exist
+      const subtasks = updates.subtasks;
+      delete updates.subtasks;
 
-        if (taskError) throw taskError;
+      // First verify the task exists and belongs to the user
+      console.log('Verifying task exists...');
+      const { data: existingTask, error: verifyError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-        // Then update each subtask
-        for (const subtask of subtasks) {
-          const { error: subtaskError } = await supabase
-            .from('subtasks')
-            .update(subtask)
-            .eq('id', subtask.id)
-            .eq('task_id', id);
-
-          if (subtaskError) {
-            console.error('Error updating subtask:', subtaskError);
-          }
-        }
-
-        return task;
+      if (verifyError) {
+        console.error('Error verifying task:', verifyError);
+        throw verifyError;
       }
 
-      // Regular task update
-      const { data, error } = await supabase
+      console.log('Verification result:', { existingTask });
+
+      if (!existingTask) {
+        console.error('Task not found:', { id });
+        throw new Error('Task not found');
+      }
+
+      if (existingTask.user_id !== session.user.id) {
+        console.error('Task belongs to different user:', {
+          taskUserId: existingTask.user_id,
+          currentUserId: session.user.id,
+        });
+        throw new Error('Unauthorized to update this task');
+      }
+
+      console.log('Task verified, proceeding with update');
+
+      // Update the task
+      const { data: updatedTask, error: taskError } = await supabase
         .from('tasks')
-        .update(updates)
+        .update({
+          title: updates.title,
+          description: updates.description,
+          due_date: updates.due_date,
+          due_time: updates.due_time,
+          priority: updates.priority,
+          is_completed: updates.is_completed,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
-        .eq('user_id', session.user.id)
         .select()
         .single();
 
-      if (error) throw error;
-      return data;
+      if (taskError) {
+        console.error('Error updating task:', taskError);
+        throw taskError;
+      }
+
+      // If there are subtasks, update them
+      if (subtasks && Array.isArray(subtasks)) {
+        for (const subtask of subtasks) {
+          if (subtask.id) {
+            // Update existing subtask
+            const { error: subtaskError } = await supabase
+              .from('subtasks')
+              .update({
+                title: subtask.title,
+                is_completed: subtask.is_completed,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', subtask.id)
+              .eq('task_id', id);
+
+            if (subtaskError) {
+              console.error('Error updating subtask:', subtaskError);
+            }
+          } else {
+            // Create new subtask
+            const { error: subtaskError } = await supabase
+              .from('subtasks')
+              .insert({
+                task_id: id,
+                title: subtask.title,
+                is_completed: subtask.is_completed,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+
+            if (subtaskError) {
+              console.error('Error creating subtask:', subtaskError);
+            }
+          }
+        }
+      }
+
+      // Fetch the updated task with its subtasks
+      const { data: finalTask, error: fetchError } = await supabase
+        .from('tasks')
+        .select('*, subtasks(*)')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching updated task:', fetchError);
+        throw fetchError;
+      }
+
+      console.log('Final task data:', finalTask);
+
+      // Refresh the tasks list
+      await fetchTasks();
+
+      return finalTask;
     } catch (err) {
+      console.error('Exception in updateTask:', err);
       setError(err as Error);
       return null;
     }
@@ -322,72 +430,268 @@ export function useTasks() {
 }
 
 export function useNotes() {
+  const { session } = useAuth();
   const [notes, setNotes] = useState<Tables['notes']['Row'][]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const isSubscribedRef = React.useRef(false);
 
-  useEffect(() => {
-    fetchNotes();
-
-    // Subscribe to changes
-    const subscription = supabase
-      .channel('notes_channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notes' },
-        fetchNotes
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  async function fetchNotes() {
+  const fetchNotes = React.useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      if (!session?.user?.id) {
+        console.log('No user session, skipping note fetch');
+        return;
+      }
+
+      setLoading(true);
+      console.log('Fetching notes for user:', session.user.id);
+      const { data: notes, error: notesError } = await supabase
         .from('notes')
-        .select('*, note_tags(*)')
+        .select('*, note_tags(tag)') // Select tags along with notes
+        .eq('user_id', session.user.id)
         .order('updated_at', { ascending: false });
 
-      if (error) throw error;
-      setNotes(data || []);
+      if (notesError) {
+        console.error('Error fetching notes:', notesError);
+        throw notesError;
+      }
+
+      console.log('Raw notes data from Supabase:', notes);
+
+      // Map note_tags to a simple array of strings
+      const notesWithTags =
+        notes?.map((note) => ({
+          ...note,
+          tags:
+            note.note_tags?.map((tag: Tables['note_tags']['Row']) => tag.tag) ||
+            [],
+        })) || [];
+
+      console.log('Processed notes with tags:', notesWithTags);
+      setNotes(notesWithTags);
     } catch (err) {
+      console.error('Error in fetchNotes:', err);
       setError(err as Error);
     } finally {
       setLoading(false);
     }
-  }
+  }, [session?.user?.id]);
 
-  async function createNote(note: Tables['notes']['Insert']) {
+  // Fetch notes on mount and when session changes
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchNotes();
+    }
+  }, [session?.user?.id, fetchNotes]);
+
+  // Set up realtime subscription
+  useEffect(() => {
+    if (!session?.user?.id) {
+      // Clean up channel if user logs out
+      if (globalNotesChannel) {
+        console.log('User logged out, removing notes channel');
+        supabase.removeChannel(globalNotesChannel);
+        globalNotesChannel = null;
+        isSubscribedRef.current = false;
+      }
+      return;
+    }
+
+    // Use the global channel instance
+    if (!globalNotesChannel) {
+      console.log('Setting up new notes subscription');
+      globalNotesChannel = supabase.channel('notes_changes').on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notes',
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          console.log('Note change detected:', payload);
+          fetchNotes();
+        }
+      );
+
+      // Subscribe only once
+      globalNotesChannel.subscribe(
+        (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => {
+          console.log('Notes subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            isSubscribedRef.current = true;
+          }
+        }
+      );
+    }
+
+    // Cleanup function
+    return () => {
+      console.log('Running notes cleanup');
+      if (globalNotesChannel) {
+        console.log('Removing notes channel');
+        supabase.removeChannel(globalNotesChannel);
+        globalNotesChannel = null;
+        isSubscribedRef.current = false;
+      }
+    };
+  }, [session?.user?.id]); // Only depend on user ID
+
+  const createNote = async (note: {
+    title: string;
+    content: string;
+    tags?: string[];
+    color?: string;
+  }) => {
     try {
-      const { data, error } = await supabase
+      if (!session?.user?.id) {
+        throw new Error('No user session');
+      }
+
+      console.log('Creating note:', note);
+
+      // Start a transaction
+      const { data: newNote, error: noteError } = await supabase
         .from('notes')
-        .insert(note)
+        .insert({
+          user_id: session.user.id,
+          title: note.title,
+          content: note.content,
+          color: note.color || '#ffffff', // Default to white if no color provided
+        })
         .select()
         .single();
 
-      if (error) throw error;
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      return null;
-    }
-  }
+      if (noteError) {
+        console.error('Error creating note:', noteError);
+        throw noteError;
+      }
 
-  async function updateNote(id: string, updates: Tables['notes']['Update']) {
+      console.log('Created note:', newNote);
+
+      // If there are tags, insert them
+      if (note.tags && note.tags.length > 0) {
+        const { error: tagsError } = await supabase.from('note_tags').insert(
+          note.tags.map((tag) => ({
+            note_id: newNote.id,
+            tag,
+          }))
+        );
+
+        if (tagsError) {
+          console.error('Error creating note tags:', tagsError);
+          throw tagsError;
+        }
+      }
+
+      // Re-fetch notes to update the list
+      await fetchNotes();
+
+      return newNote;
+    } catch (err) {
+      console.error('Error in createNote:', err);
+      throw err;
+    }
+  };
+
+  async function updateNote(
+    id: string,
+    updates: Tables['notes']['Update'] & { tags?: string[] }
+  ) {
     try {
-      const { data, error } = await supabase
+      if (!session?.user?.id) {
+        throw new Error('No user session');
+      }
+
+      console.log('Starting note update:', {
+        noteId: id,
+        userId: session.user.id,
+        updates,
+      });
+
+      // Verify the note exists and belongs to the user
+      const { data: existingNote, error: verifyError } = await supabase
         .from('notes')
-        .update(updates)
+        .select('id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (verifyError) {
+        console.error('Error verifying note:', verifyError);
+        throw verifyError;
+      }
+
+      if (!existingNote || existingNote.user_id !== session.user.id) {
+        console.error('Note not found or belongs to different user:', { id });
+        throw new Error('Note not found or unauthorized');
+      }
+
+      // Separate note data from tags
+      const { tags, ...noteDataToUpdate } = updates;
+
+      // Update the note
+      const { data: updatedNote, error: noteError } = await supabase
+        .from('notes')
+        .update({
+          ...noteDataToUpdate,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
         .select()
         .single();
 
-      if (error) throw error;
-      return data;
+      if (noteError) {
+        console.error('Error updating note:', noteError);
+        throw noteError;
+      }
+
+      console.log('Note updated successfully:', updatedNote);
+
+      // Handle tags update: delete existing tags and insert new ones
+      if (tags !== undefined) {
+        // Only update tags if they are included in the updates object
+        console.log('Updating note tags...');
+        // Delete existing tags for this note
+        const { error: deleteTagsError } = await supabase
+          .from('note_tags')
+          .delete()
+          .eq('note_id', id);
+
+        if (deleteTagsError) {
+          console.error('Error deleting existing note tags:', deleteTagsError);
+          // Continue with note update even if tag deletion fails?
+          // throw deleteTagsError;
+        }
+        console.log('Existing tags deleted');
+
+        // Insert new tags if there are any
+        if (tags.length > 0) {
+          const noteTagsData = tags.map((tag: string) => ({
+            note_id: id,
+            tag: tag,
+          }));
+
+          const { error: insertTagsError } = await supabase
+            .from('note_tags')
+            .insert(noteTagsData);
+
+          if (insertTagsError) {
+            console.error('Error inserting new note tags:', insertTagsError);
+            throw insertTagsError;
+          }
+          console.log('New tags inserted successfully');
+        }
+        console.log('Note tags update complete');
+      }
+
+      // Fetch notes to update the list with the changes
+      await fetchNotes();
+
+      // Fetch the updated note with its tags after all updates are done
+      const updatedNoteWithTags = await fetchNoteById(id);
+      return updatedNoteWithTags; // This will be null if fetch fails, which is handled by the caller
     } catch (err) {
+      console.error('Exception in updateNote:', err);
       setError(err as Error);
       return null;
     }
@@ -395,23 +699,114 @@ export function useNotes() {
 
   async function deleteNote(id: string) {
     try {
+      if (!session?.user?.id) {
+        throw new Error('No user session');
+      }
+
+      console.log('Deleting note:', { noteId: id, userId: session.user.id });
+
+      // Verify the note exists and belongs to the user before deleting
+      const { data: existingNote, error: verifyError } = await supabase
+        .from('notes')
+        .select('id, user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (verifyError) {
+        console.error('Error verifying note before deletion:', verifyError);
+        throw verifyError;
+      }
+
+      if (!existingNote || existingNote.user_id !== session.user.id) {
+        console.error('Note not found or belongs to different user:', { id });
+        throw new Error('Note not found or unauthorized for deletion');
+      }
+
       const { error } = await supabase.from('notes').delete().eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting note:', error);
+        throw error;
+      }
+
+      console.log('Note deleted successfully:', id);
+
+      // Fetch notes to update the list
+      await fetchNotes();
+
       return true;
     } catch (err) {
+      console.error('Exception in deleteNote:', err);
       setError(err as Error);
       return false;
     }
   }
 
+  // Function to fetch a single note by ID (for the detail screen)
+  async function fetchNoteById(id: string) {
+    try {
+      if (!session?.user?.id) {
+        console.log('No user session, skipping fetchNoteById');
+        return null;
+      }
+
+      setLoading(true);
+      console.log('Fetching note by ID:', {
+        noteId: id,
+        userId: session.user.id,
+      });
+      const { data: note, error } = await supabase
+        .from('notes')
+        .select('*, note_tags(tag)')
+        .eq('id', id)
+        .eq('user_id', session.user.id) // Ensure the note belongs to the user
+        .single();
+
+      if (error) {
+        console.error('Error fetching note by ID:', error);
+        throw error;
+      }
+
+      if (!note) {
+        console.log('Note not found for ID:', id);
+        return null;
+      }
+
+      // Map note_tags to a simple array of strings
+      const noteWithTags = {
+        ...note,
+        tags:
+          note.note_tags?.map((tag: Tables['note_tags']['Row']) => tag.tag) ||
+          [],
+      };
+
+      console.log('Note fetched successfully by ID:', noteWithTags);
+      return noteWithTags;
+    } catch (err) {
+      console.error('Exception in fetchNoteById:', err);
+      setError(err as Error);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Force refresh notes
+  const refreshNotes = React.useCallback(() => {
+    console.log('Force refreshing notes...');
+    fetchNotes();
+  }, [fetchNotes]);
+
   return {
     notes,
     loading,
     error,
+    fetchNotes,
+    fetchNoteById,
     createNote,
     updateNote,
     deleteNote,
+    refreshNotes,
   };
 }
 
