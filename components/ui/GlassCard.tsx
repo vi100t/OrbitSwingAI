@@ -46,6 +46,7 @@ const styles = StyleSheet.create({
   blur: {
     width: '100%',
     // height: '100%',
+    flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
   content: {

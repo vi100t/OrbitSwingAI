@@ -394,10 +394,12 @@ const getPriorityColor = (priority: string, opacity: number = 1) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: '100%',
   },
   content: {
     flex: 1,
     padding: 20,
+    height: '100%',
   },
   card: {
     marginBottom: 20,

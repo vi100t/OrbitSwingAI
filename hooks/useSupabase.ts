@@ -510,7 +510,10 @@ export function useNotes() {
         },
         (payload) => {
           console.log('Note change detected:', payload);
-          fetchNotes();
+          // Only fetch if the change wasn't triggered by our own update
+          if (payload.eventType !== 'UPDATE') {
+            fetchNotes();
+          }
         }
       );
 
@@ -659,8 +662,7 @@ export function useNotes() {
 
         if (deleteTagsError) {
           console.error('Error deleting existing note tags:', deleteTagsError);
-          // Continue with note update even if tag deletion fails?
-          // throw deleteTagsError;
+          throw deleteTagsError;
         }
         console.log('Existing tags deleted');
 
@@ -684,12 +686,20 @@ export function useNotes() {
         console.log('Note tags update complete');
       }
 
-      // Fetch notes to update the list with the changes
-      await fetchNotes();
+      // Update the notes state directly instead of fetching
+      setNotes((prevNotes) =>
+        prevNotes.map((note) =>
+          note.id === id
+            ? { ...note, ...noteDataToUpdate, tags: tags || note.tags }
+            : note
+        )
+      );
 
-      // Fetch the updated note with its tags after all updates are done
-      const updatedNoteWithTags = await fetchNoteById(id);
-      return updatedNoteWithTags; // This will be null if fetch fails, which is handled by the caller
+      // Return the updated note with tags
+      return {
+        ...updatedNote,
+        tags: tags || [],
+      };
     } catch (err) {
       console.error('Exception in updateNote:', err);
       setError(err as Error);

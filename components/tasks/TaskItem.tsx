@@ -86,7 +86,9 @@ const TaskItem: React.FC<Props> = ({ task, onPress }) => {
   return (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
       <GlassCard
-        style={[styles.card, task.is_completed && styles.completedCard]}
+        style={
+          [styles.card, task.is_completed ? styles.completedCard : null] as any
+        }
       >
         <View style={styles.container}>
           <TouchableOpacity

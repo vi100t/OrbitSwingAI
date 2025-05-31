@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GlassBg from '@/components/ui/GlassBg';
@@ -20,9 +19,10 @@ import { useRouter } from 'expo-router';
 import SearchBar from '@/components/shared/SearchBar';
 import { useNotes } from '@/hooks/useSupabase';
 import PullToRefreshLoader from '@/components/shared/PullToRefreshLoader';
+import { Note } from '@/types/note';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const COLUMN_WIDTH = (SCREEN_WIDTH - 48) / 2; // 2 columns with padding
 
 export default function NotesScreen() {
   const { notes, loading, refreshNotes } = useNotes();
@@ -60,14 +60,14 @@ export default function NotesScreen() {
     pullDistance.setValue(0);
   }, [refreshNotes, pullDistance]);
 
-  const onScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { y: pullDistance } } }],
-    { useNativeDriver: true }
-  );
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    pullDistance.setValue(offsetY);
+  };
 
   const cardsTranslateY = pullDistance.interpolate({
     inputRange: [-100, -50, 0],
-    outputRange: [SCREEN_HEIGHT, 0, 0],
+    outputRange: [SCREEN_WIDTH, 0, 0],
     extrapolate: 'clamp',
   });
 
@@ -86,6 +86,34 @@ export default function NotesScreen() {
 
   const handleNotePress = (noteId: string) => {
     router.push(`/notes/${noteId}`);
+  };
+
+  const renderMasonryLayout = () => {
+    const columns: Note[][] = [[], []];
+    let currentColumn = 0;
+
+    sortedNotes.forEach((note) => {
+      // Add note to the current column
+      columns[currentColumn].push(note);
+      // Switch to the other column for the next note
+      currentColumn = currentColumn === 0 ? 1 : 0;
+    });
+
+    return (
+      <View style={styles.masonryContainer}>
+        {columns.map((column, columnIndex) => (
+          <View key={columnIndex} style={styles.column}>
+            {column.map((note) => (
+              <NoteItem
+                key={note.id}
+                note={note}
+                onPress={() => handleNotePress(note.id)}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+    );
   };
 
   if (loading) {
@@ -145,29 +173,14 @@ export default function NotesScreen() {
               },
             ]}
           >
-            <AnimatedFlatList
-              data={sortedNotes}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <NoteItem
-                  note={item}
-                  onPress={() => handleNotePress(item.id)}
-                />
-              )}
-              contentContainerStyle={styles.notesList}
-              numColumns={2}
-              columnWrapperStyle={styles.columnWrapper}
-              onScroll={onScroll}
+            <ScrollView
+              onScroll={handleScroll}
               scrollEventThrottle={16}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  colors={[Colors.primary]}
-                  tintColor={Colors.primary}
-                />
-              }
-              ListEmptyComponent={
+              contentContainerStyle={styles.notesList}
+            >
+              {sortedNotes.length > 0 ? (
+                renderMasonryLayout()
+              ) : (
                 <View style={styles.emptyContainer}>
                   <Text style={styles.emptyText}>No notes found</Text>
                   <TouchableOpacity
@@ -177,8 +190,8 @@ export default function NotesScreen() {
                     <Text style={styles.emptyButtonText}>Create Note</Text>
                   </TouchableOpacity>
                 </View>
-              }
-            />
+              )}
+            </ScrollView>
           </Animated.View>
 
           <PullToRefreshLoader pullDistance={pullDistance} />
@@ -238,11 +251,16 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  masonryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  column: {
+    width: COLUMN_WIDTH,
+    gap: 8,
+  },
   notesList: {
     paddingBottom: 100,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
   },
   emptyContainer: {
     marginTop: 40,

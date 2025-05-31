@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase';
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('orbitswing.admin@gmail.com');
+  const [email, setEmail] = useState('dovallevicente@gmail.com');
   const [password, setPassword] = useState('admin123');
   const [isLoading, setIsLoading] = useState(false);
 

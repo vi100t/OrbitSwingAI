@@ -24,7 +24,7 @@ import { Task } from '@/types/task';
 import PullToRefreshLoader from '@/components/shared/PullToRefreshLoader';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<Task>);
 
 export default function TasksScreen() {
   const { tasks, loading, refreshTasks } = useTasks();
@@ -150,7 +150,7 @@ export default function TasksScreen() {
           >
             <AnimatedFlatList
               data={sortedTasks}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item: Task) => item.id}
               renderItem={renderItem}
               contentContainerStyle={styles.tasksList}
               onScroll={onScroll}
@@ -187,6 +187,7 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: '100%',
   },
   contentContainer: {
     flex: 1,
@@ -194,6 +195,7 @@ const styles = StyleSheet.create({
   },
   contentWrapper: {
     flex: 1,
+    height: '100%',
   },
   searchRow: {
     flexDirection: 'row',
@@ -234,6 +236,7 @@ const styles = StyleSheet.create({
   },
   tasksList: {
     paddingBottom: 100,
+    gap: 10,
   },
   emptyContainer: {
     marginTop: 40,

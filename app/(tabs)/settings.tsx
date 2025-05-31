@@ -21,6 +21,7 @@ import {
   CircleHelp as HelpCircle,
   BookOpen,
   User,
+  LogOut,
 } from 'lucide-react-native';
 import { useStore } from '@/store';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,7 +38,7 @@ export default function SettingsScreen() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      router.replace('/');
+      router.replace('/login');
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -103,6 +104,14 @@ export default function SettingsScreen() {
               title="Profile Settings"
               icon={<User size={22} color={Colors.primary} />}
               onPress={() => router.push('/settings/profile')}
+            />
+
+            <View style={styles.divider} />
+
+            <SettingLink
+              title="Logout"
+              icon={<LogOut size={22} color={Colors.error} />}
+              onPress={handleSignOut}
             />
           </GlassCard>
 

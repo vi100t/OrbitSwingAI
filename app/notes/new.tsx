@@ -225,21 +225,7 @@ export default function NoteDetailScreen() {
                 ))}
               </View>
             </View>
-
-            {id && (
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={handleDelete}
-              >
-                <Trash2 size={20} color={Colors.error} />
-                <Text style={styles.deleteText}>Delete Note</Text>
-              </TouchableOpacity>
-            )}
           </GlassCard>
-
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Note</Text>
-          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     </GlassBg>
@@ -334,33 +320,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     marginLeft: 6,
   },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    marginTop: 20,
-  },
-  deleteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    color: Colors.error,
-    marginLeft: 8,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  saveButtonText: {
-    fontFamily: 'Poppins-Medium',
-    fontSize: 16,
-    color: 'white',
-  },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -369,6 +328,17 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 8,
+  },
+  saveButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 16,
+    color: 'white',
   },
   loadingContainer: {
     flex: 1,

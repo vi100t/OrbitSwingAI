@@ -26,17 +26,20 @@ export default function DashboardScreen() {
 
   const completedTasksToday = tasks.filter(
     (task) =>
-      task.isCompleted &&
-      new Date(task.completedAt).toDateString() === new Date().toDateString()
+      task.is_completed &&
+      task.completed_at &&
+      new Date(task.completed_at).toDateString() === new Date().toDateString()
   ).length;
 
   const totalTasksToday = tasks.filter(
     (task) =>
-      new Date(task.dueDate).toDateString() === new Date().toDateString()
+      new Date(task.due_date).toDateString() === new Date().toDateString()
   ).length;
 
   const upcomingTasks = tasks
-    .filter((task) => !task.isCompleted && new Date(task.dueDate) > new Date())
+    .filter(
+      (task) => !task.is_completed && new Date(task.due_date) > new Date()
+    )
     .slice(0, 3);
 
   const displayName =
