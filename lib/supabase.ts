@@ -4,13 +4,10 @@ import { Database } from '@/types/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
+// Temporary hardcoded values for testing
+const supabaseUrl = 'https://cmqnwvvmlscycwmlwewe.supabase.co';
 const supabaseAnonKey =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase URL or Anon Key');
-}
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcW53dnZtbHNjeWN3bWx3ZXdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3MTE0MjMsImV4cCI6MjA2MzI4NzQyM30.bjWIi5NJHy5gHCSoFNs94DgrCpRkmXjvpvqsyifLRs8';
 
 console.log('Initializing Supabase client with URL:', supabaseUrl);
 

@@ -1,5 +1,12 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import GlassBg from '@/components/ui/GlassBg';
@@ -7,43 +14,48 @@ import TaskSummary from '@/components/dashboard/TaskSummary';
 import HabitStreak from '@/components/dashboard/HabitStreak';
 import UpcomingTasks from '@/components/dashboard/UpcomingTasks';
 import AIAssistant from '@/components/shared/AIAssistant';
-import { useStore } from '@/store';
+import { useTasks, useHabits } from '@/hooks/useSupabase';
 import HeatmapView from '@/components/dashboard/HeatmapView';
 import QuickActions from '@/components/dashboard/QuickActions';
 import Header from '@/components/shared/Header';
 import { useRouter } from 'expo-router';
 import { useUserProfile } from '@/hooks/useSupabase';
+import dayjs from 'dayjs';
 
 export default function DashboardScreen() {
-  const { habits, tasks, initializeData } = useStore();
+  const { tasks, loading: tasksLoading } = useTasks();
+  const { habits, loading: habitsLoading } = useHabits();
   const router = useRouter();
   const { profile, loading: profileLoading } = useUserProfile();
 
-  useEffect(() => {
-    // Initialize sample data for demonstration
-    initializeData();
-  }, [initializeData]);
+  const today = dayjs().startOf('day');
+  const tomorrow = dayjs().add(1, 'day').startOf('day');
 
   const completedTasksToday = tasks.filter(
     (task) =>
       task.is_completed &&
       task.completed_at &&
-      new Date(task.completed_at).toDateString() === new Date().toDateString()
+      dayjs(task.completed_at).startOf('day').isSame(today)
   ).length;
 
-  const totalTasksToday = tasks.filter(
-    (task) =>
-      new Date(task.due_date).toDateString() === new Date().toDateString()
+  const totalTasksToday = tasks.filter((task) =>
+    dayjs(task.due_date).startOf('day').isSame(today)
   ).length;
 
   const upcomingTasks = tasks
     .filter(
-      (task) => !task.is_completed && new Date(task.due_date) > new Date()
+      (task) =>
+        !task.is_completed &&
+        dayjs(task.due_date).isAfter(today) &&
+        dayjs(task.due_date).isBefore(tomorrow.add(7, 'day'))
     )
+    .sort((a, b) => dayjs(a.due_date).unix() - dayjs(b.due_date).unix())
     .slice(0, 3);
 
   const displayName =
     profile?.display_name || profile?.first_name || 'Productivity Pro';
+
+  const isLoading = tasksLoading || habitsLoading || profileLoading;
 
   return (
     <GlassBg>
@@ -63,6 +75,7 @@ export default function DashboardScreen() {
             completedTasks={completedTasksToday}
             totalTasks={totalTasksToday}
             onPress={() => router.push('/tasks')}
+            loading={isLoading}
           />
 
           <Text style={styles.sectionTitle}>Habit Streaks</Text>
@@ -71,15 +84,21 @@ export default function DashboardScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.streaksContainer}
           >
-            {habits.map((habit) => (
-              <HabitStreak
-                key={habit.id}
-                title={habit.name}
-                streak={habit.currentStreak}
-                color={habit.color}
-                onPress={() => {}}
-              />
-            ))}
+            {isLoading ? (
+              <View style={styles.loadingHabits}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+              </View>
+            ) : (
+              habits.map((habit) => (
+                <HabitStreak
+                  key={habit.id}
+                  title={habit.name}
+                  streak={habit.current_streak || 0}
+                  color={habit.color || Colors.primary}
+                  onPress={() => {}}
+                />
+              ))
+            )}
           </ScrollView>
 
           <View style={styles.heatmapContainer}>
@@ -141,6 +160,11 @@ const styles = StyleSheet.create({
   streaksContainer: {
     flexDirection: 'row',
     marginHorizontal: -8,
+  },
+  loadingHabits: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heatmapContainer: {
     marginTop: 16,

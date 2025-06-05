@@ -1,5 +1,12 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import GlassCard from '@/components/ui/GlassCard';
 import { CircleProgress } from '@/components/ui/CircleProgress';
 import Colors from '@/constants/Colors';
@@ -9,11 +16,34 @@ type Props = {
   completedTasks: number;
   totalTasks: number;
   onPress: () => void;
+  loading?: boolean;
 };
 
-const TaskSummary: React.FC<Props> = ({ completedTasks, totalTasks, onPress }) => {
+const TaskSummary: React.FC<Props> = ({
+  completedTasks,
+  totalTasks,
+  onPress,
+  loading = false,
+}) => {
   const progress = totalTasks === 0 ? 0 : completedTasks / totalTasks;
   const percentage = Math.round(progress * 100);
+
+  if (loading) {
+    return (
+      <GlassCard style={styles.card}>
+        <View style={styles.container}>
+          <View style={styles.textContainer}>
+            <View style={styles.loadingTitle} />
+            <View style={styles.loadingSubtitle} />
+            <View style={styles.loadingButton} />
+          </View>
+          <View style={styles.progressContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        </View>
+      </GlassCard>
+    );
+  }
 
   return (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
@@ -30,10 +60,14 @@ const TaskSummary: React.FC<Props> = ({ completedTasks, totalTasks, onPress }) =
             </View>
           </View>
           <View style={styles.progressContainer}>
-            <CircleProgress 
-              size={80} 
-              progress={progress} 
-              trackColor={Platform.OS === 'web' ? 'rgba(124, 77, 255, 0.2)' : Colors.primaryLight}
+            <CircleProgress
+              size={80}
+              progress={progress}
+              trackColor={
+                Platform.OS === 'web'
+                  ? 'rgba(124, 77, 255, 0.2)'
+                  : Colors.primaryLight
+              }
               progressColor={Colors.primary}
               textStyle={styles.progressText}
             />
@@ -84,6 +118,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     color: Colors.primary,
+  },
+  loadingTitle: {
+    height: 24,
+    width: '60%',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  loadingSubtitle: {
+    height: 20,
+    width: '80%',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 4,
+    marginBottom: 16,
+  },
+  loadingButton: {
+    height: 20,
+    width: '40%',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 4,
   },
 });
 

@@ -1,81 +1,146 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Calendar as RNCalendar, CalendarProps } from 'react-native-calendars';
-import Colors from '@/constants/Colors';
 import GlassBg from '@/components/ui/GlassBg';
-import GlassCard from '@/components/ui/GlassCard';
-import { useStore } from '@/store';
 import Header from '@/components/shared/Header';
+import Colors from '@/constants/Colors';
+import { Calendar as CalendarIcon, Clock, Plus } from 'lucide-react-native';
+import { Calendar } from 'react-native-calendars';
+import { useRouter } from 'expo-router';
+import { useTasks } from '@/hooks/useSupabase';
 import dayjs from 'dayjs';
-import DaySchedule from '@/components/calendar/DaySchedule';
+import TaskItem from '@/components/tasks/TaskItem';
 
-type DayObject = {
-  dateString: string;
-  day: number;
-  month: number;
-  year: number;
-  timestamp: number;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Generate time slots for the day
+const generateTimeSlots = () => {
+  const slots = [];
+  for (let hour = 0; hour < 24; hour++) {
+    slots.push({
+      hour,
+      label: dayjs().hour(hour).format('h:mm A'),
+    });
+  }
+  return slots;
 };
 
 export default function CalendarScreen() {
-  const { tasks } = useStore();
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const { tasks, loading } = useTasks();
+  const [selectedDate, setSelectedDate] = useState(
+    dayjs().format('YYYY-MM-DD')
+  );
+  const router = useRouter();
+  const timeSlots = generateTimeSlots();
 
-  // Function to prepare calendar marked dates
-  const getMarkedDates = () => {
-    const markedDates: Record<string, any> = {};
-    
-    // Add a dot for each day with tasks
-    tasks.forEach(task => {
-      const dateStr = dayjs(task.dueDate).format('YYYY-MM-DD');
-      
-      if (!markedDates[dateStr]) {
-        markedDates[dateStr] = { dots: [] };
-      }
-      
-      // Add a dot based on priority
-      const dotColor = task.priority === 'high' ? Colors.error : 
-                       task.priority === 'medium' ? Colors.warning : 
-                       Colors.info;
-      
-      // Limit to 3 dots per date to avoid overflow
-      if (markedDates[dateStr].dots.length < 3) {
-        markedDates[dateStr].dots.push({
-          key: task.id,
-          color: dotColor,
-        });
-      }
-    });
-    
-    // Highlight selected date
+  console.log('Tasks:', tasks); // Debug log
+
+  // Create marked dates object for calendar
+  const markedDates = tasks.reduce((acc, task) => {
+    // Format the date to YYYY-MM-DD
+    const date = dayjs(task.due_date).format('YYYY-MM-DD');
+    if (!acc[date]) {
+      acc[date] = {
+        marked: true,
+        dotColor: getPriorityColor(task.priority),
+      };
+    }
+    return acc;
+  }, {} as Record<string, { marked: boolean; dotColor: string; selected?: boolean; selectedColor?: string }>);
+
+  console.log('Marked Dates:', markedDates); // Debug log
+
+  // Add selected date to marked dates
+  if (markedDates[selectedDate]) {
     markedDates[selectedDate] = {
-      ...(markedDates[selectedDate] || {}),
+      ...markedDates[selectedDate],
       selected: true,
       selectedColor: Colors.primary,
     };
-    
-    return markedDates;
-  };
+  } else {
+    markedDates[selectedDate] = {
+      marked: false,
+      dotColor: Colors.primary,
+      selected: true,
+      selectedColor: Colors.primary,
+    };
+  }
 
-  const handleDayPress = (day: DayObject) => {
-    setSelectedDate(day.dateString);
-  };
+  // Filter tasks for selected date
+  const selectedDateTasks = tasks.filter((task) => {
+    const taskDate = dayjs(task.due_date).format('YYYY-MM-DD');
+    return taskDate === selectedDate;
+  });
 
-  // Get tasks for selected date
-  const selectedTasks = tasks.filter(task => 
-    dayjs(task.dueDate).format('YYYY-MM-DD') === selectedDate
-  );
+  // Group tasks by hour
+  const tasksByHour = timeSlots.reduce((acc, slot) => {
+    const tasksInSlot = selectedDateTasks.filter((task) => {
+      if (!task.due_time) return false;
+      const taskHour = dayjs(task.due_time, 'HH:mm:ss').hour();
+      return taskHour === slot.hour;
+    });
+    acc[slot.hour] = tasksInSlot;
+    return acc;
+  }, {} as Record<number, typeof selectedDateTasks>);
+
+  // Get tasks without time
+  const tasksWithoutTime = selectedDateTasks.filter((task) => !task.due_time);
+
+  function getPriorityColor(priority: string) {
+    switch (priority) {
+      case 'high':
+        return Colors.error;
+      case 'medium':
+        return Colors.warning;
+      default:
+        return Colors.info;
+    }
+  }
+
+  if (loading) {
+    return (
+      <GlassBg>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Header title="Calendar" showVoice={true} />
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading tasks...</Text>
+          </View>
+        </SafeAreaView>
+      </GlassBg>
+    );
+  }
 
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title="Calendar" />
-        
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          <GlassCard style={styles.calendarCard}>
-            <RNCalendar
+        <Header
+          title="Calendar"
+          showVoice={true}
+          rightComponent={
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => router.push('/tasks/new')}
+            >
+              <Plus size={20} color="#fff" />
+            </TouchableOpacity>
+          }
+        />
+
+        <View style={styles.contentContainer}>
+          <View style={styles.calendarContainer}>
+            <Calendar
+              current={selectedDate}
+              onDayPress={(day) => setSelectedDate(day.dateString)}
+              markedDates={markedDates}
               theme={{
+                backgroundColor: 'transparent',
                 calendarBackground: 'transparent',
                 textSectionTitleColor: Colors.text,
                 selectedDayBackgroundColor: Colors.primary,
@@ -89,32 +154,78 @@ export default function CalendarScreen() {
                 monthTextColor: Colors.text,
                 indicatorColor: Colors.primary,
                 textDayFontFamily: 'Inter-Regular',
-                textMonthFontFamily: 'Poppins-SemiBold',
+                textMonthFontFamily: 'Poppins-Medium',
                 textDayHeaderFontFamily: 'Inter-Medium',
-                textDayFontSize: 14,
-                textMonthFontSize: 16,
-                textDayHeaderFontSize: 12,
               }}
-              markingType="multi-dot"
-              markedDates={getMarkedDates()}
-              onDayPress={handleDayPress}
-              enableSwipeMonths={true}
-            />
-          </GlassCard>
-          
-          <View style={styles.scheduleContainer}>
-            <Text style={styles.dateTitle}>
-              {dayjs(selectedDate).format('dddd, MMMM D')}
-            </Text>
-            
-            <DaySchedule 
-              tasks={selectedTasks}
-              date={selectedDate}
             />
           </View>
-          
-          <View style={styles.spacer} />
-        </ScrollView>
+
+          <View style={styles.tasksContainer}>
+            <View style={styles.tasksHeader}>
+              <Text style={styles.tasksTitle}>
+                {dayjs(selectedDate).format('MMMM D, YYYY')}
+              </Text>
+              <Text style={styles.tasksCount}>
+                {selectedDateTasks.length} task
+                {selectedDateTasks.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+
+            <ScrollView
+              style={styles.tasksList}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedDateTasks.length > 0 ? (
+                <>
+                  {timeSlots.map((slot) => {
+                    const tasksInSlot = tasksByHour[slot.hour] || [];
+                    if (tasksInSlot.length === 0) return null;
+
+                    return (
+                      <View key={slot.hour} style={styles.timeSlot}>
+                        <View style={styles.timeHeader}>
+                          <Clock size={16} color={Colors.secondaryText} />
+                          <Text style={styles.timeLabel}>{slot.label}</Text>
+                        </View>
+                        {tasksInSlot.map((task) => (
+                          <TaskItem
+                            key={task.id}
+                            task={task}
+                            onPress={() => router.push(`/tasks/${task.id}`)}
+                          />
+                        ))}
+                      </View>
+                    );
+                  })}
+
+                  {tasksWithoutTime.length > 0 && (
+                    <View style={styles.timeSlot}>
+                      <View style={styles.timeHeader}>
+                        <Text style={styles.timeLabel}>No Time Set</Text>
+                      </View>
+                      {tasksWithoutTime.map((task) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onPress={() => router.push(`/tasks/${task.id}`)}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <CalendarIcon
+                    size={48}
+                    color={Colors.secondaryText}
+                    style={styles.emptyIcon}
+                  />
+                  <Text style={styles.emptyText}>No tasks for this day</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </SafeAreaView>
     </GlassBg>
   );
@@ -123,24 +234,99 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: '100%',
   },
-  scrollView: {
+  contentContainer: {
     flex: 1,
     paddingHorizontal: 20,
   },
-  calendarCard: {
+  calendarContainer: {
     marginTop: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  scheduleContainer: {
+  tasksContainer: {
+    flex: 1,
     marginTop: 24,
   },
-  dateTitle: {
-    fontFamily: 'Poppins-SemiBold',
-    fontSize: 18,
-    color: Colors.text,
+  tasksHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  spacer: {
-    height: 100,
+  tasksTitle: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 18,
+    color: Colors.text,
+  },
+  tasksCount: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+  },
+  tasksList: {
+    flex: 1,
+  },
+  timeSlot: {
+    marginBottom: 16,
+  },
+  timeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  timeLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    marginLeft: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  emptyIcon: {
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    color: Colors.secondaryText,
+    marginBottom: 16,
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  addButtonText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: 'white',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    color: Colors.secondaryText,
   },
 });

@@ -37,15 +37,26 @@ export function useTasks() {
 
       while (retryCount < maxRetries) {
         try {
+          console.log(`Attempt ${retryCount + 1} to fetch tasks...`);
           const result = await supabase
             .from('tasks')
             .select('*')
             .eq('user_id', session.user.id)
             .order('due_date', { ascending: true });
 
+          console.log('Tasks fetch result:', result);
           tasks = result.data;
           tasksError = result.error;
-          break;
+
+          if (tasksError) {
+            console.error('Error in tasks fetch:', tasksError);
+            throw tasksError;
+          }
+
+          if (tasks) {
+            console.log('Successfully fetched tasks:', tasks.length);
+            break;
+          }
         } catch (err) {
           console.log(`Retry ${retryCount + 1} failed:`, err);
           retryCount++;
@@ -56,27 +67,41 @@ export function useTasks() {
         }
       }
 
-      if (tasksError) {
-        console.error('Error fetching tasks:', tasksError);
-        throw tasksError;
+      if (!tasks) {
+        console.log('No tasks found for user');
+        setTasks([]);
+        return;
       }
 
       // Fetch subtasks for all tasks with retry logic
-      const taskIds = tasks?.map((task) => task.id) || [];
+      const taskIds = tasks.map((task) => task.id);
+      console.log('Fetching subtasks for task IDs:', taskIds);
+
       let subtasks = null;
       let subtasksError = null;
       retryCount = 0;
 
       while (retryCount < maxRetries) {
         try {
+          console.log(`Attempt ${retryCount + 1} to fetch subtasks...`);
           const result = await supabase
             .from('subtasks')
             .select('*')
             .in('task_id', taskIds);
 
+          console.log('Subtasks fetch result:', result);
           subtasks = result.data;
           subtasksError = result.error;
-          break;
+
+          if (subtasksError) {
+            console.error('Error in subtasks fetch:', subtasksError);
+            throw subtasksError;
+          }
+
+          if (subtasks) {
+            console.log('Successfully fetched subtasks:', subtasks.length);
+            break;
+          }
         } catch (err) {
           console.log(`Retry ${retryCount + 1} failed:`, err);
           retryCount++;
@@ -87,19 +112,14 @@ export function useTasks() {
         }
       }
 
-      if (subtasksError) {
-        console.error('Error fetching subtasks:', subtasksError);
-        throw subtasksError;
-      }
-
       // Combine tasks with their subtasks
-      const tasksWithSubtasks =
-        tasks?.map((task) => ({
-          ...task,
-          subtasks:
-            subtasks?.filter((subtask) => subtask.task_id === task.id) || [],
-        })) || [];
+      const tasksWithSubtasks = tasks.map((task) => ({
+        ...task,
+        subtasks:
+          subtasks?.filter((subtask) => subtask.task_id === task.id) || [],
+      }));
 
+      console.log('Final tasks with subtasks:', tasksWithSubtasks);
       setTasks(tasksWithSubtasks);
     } catch (err) {
       console.error('Error in fetchTasks:', err);
@@ -111,8 +131,13 @@ export function useTasks() {
 
   // Fetch tasks on mount and when session changes
   useEffect(() => {
+    console.log('useEffect triggered for fetchTasks');
     if (session?.user?.id) {
+      console.log('User session found, fetching tasks...');
       fetchTasks();
+    } else {
+      console.log('No user session, clearing tasks');
+      setTasks([]);
     }
   }, [session?.user?.id, fetchTasks]);
 
@@ -132,19 +157,25 @@ export function useTasks() {
     // Use the global channel instance
     if (!globalChannel) {
       console.log('Setting up new subscription');
-      globalChannel = supabase.channel('tasks_changes').on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `user_id=eq.${session.user.id}`,
-        },
-        (payload) => {
-          console.log('Task change detected:', payload);
-          fetchTasks();
-        }
-      );
+      globalChannel = supabase
+        .channel('tasks_changes', {
+          config: {
+            broadcast: { self: true },
+          },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tasks',
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            console.log('Task change detected:', payload);
+            fetchTasks();
+          }
+        );
 
       // Subscribe only once
       globalChannel.subscribe(
@@ -152,6 +183,17 @@ export function useTasks() {
           console.log('Subscription status:', status);
           if (status === 'SUBSCRIBED') {
             isSubscribedRef.current = true;
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Channel error, attempting to reconnect...');
+            // Create a new channel instance for reconnection
+            setTimeout(() => {
+              if (globalChannel) {
+                supabase.removeChannel(globalChannel);
+                globalChannel = null;
+                isSubscribedRef.current = false;
+                // The effect will run again and create a new channel
+              }
+            }, 1000);
           }
         }
       );
@@ -167,7 +209,7 @@ export function useTasks() {
         isSubscribedRef.current = false;
       }
     };
-  }, [session?.user?.id]); // Only depend on user ID
+  }, [session?.user?.id, fetchTasks]); // Add fetchTasks to dependencies
 
   // Force refresh tasks
   const refreshTasks = React.useCallback(() => {

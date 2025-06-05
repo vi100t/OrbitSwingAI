@@ -1,9 +1,16 @@
 import { Task } from '@/types/task';
 import { Note } from '@/types/note';
 import { Habit } from '@/types/habit';
+import dayjs from 'dayjs';
 
-// Helper to generate random IDs
-const generateId = () => Math.random().toString(36).substring(2, 9);
+// Helper to generate UUID v4
+const generateId = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 // Get today and other dates
 const today = new Date();
@@ -17,70 +24,125 @@ yesterday.setDate(today.getDate() - 1);
 const tasks: Task[] = [
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Complete project presentation',
     description: 'Finish slides and prepare notes for the team meeting',
-    dueDate: tomorrow.toISOString(),
-    dueTime: new Date(tomorrow.setHours(14, 0, 0, 0)).toISOString(),
-    isCompleted: false,
+    due_date: dayjs(tomorrow).format('YYYY-MM-DD'),
+    due_time: dayjs(tomorrow)
+      .set('hour', 14)
+      .set('minute', 0)
+      .format('HH:mm:ss'),
+    is_completed: false,
+    completed_at: null,
     priority: 'high',
-    subTasks: [
-      { id: generateId(), title: 'Prepare slides', isCompleted: true },
-      { id: generateId(), title: 'Practice delivery', isCompleted: false },
-      { id: generateId(), title: 'Gather feedback', isCompleted: false },
-    ],
     category: 'work',
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    subtasks: [
+      {
+        id: generateId(),
+        task_id: generateId(),
+        title: 'Prepare slides',
+        is_completed: true,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        id: generateId(),
+        task_id: generateId(),
+        title: 'Practice delivery',
+        is_completed: false,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        id: generateId(),
+        task_id: generateId(),
+        title: 'Gather feedback',
+        is_completed: false,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+    ],
   },
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Grocery shopping',
     description: 'Buy fruits, vegetables, and snacks',
-    dueDate: today.toISOString(),
-    isCompleted: false,
+    due_date: dayjs(today).format('YYYY-MM-DD'),
+    due_time: null,
+    is_completed: false,
+    completed_at: null,
     priority: 'medium',
-    subTasks: [
-      { id: generateId(), title: 'Make shopping list', isCompleted: true },
-      { id: generateId(), title: 'Check pantry inventory', isCompleted: true },
-      { id: generateId(), title: 'Visit supermarket', isCompleted: false },
-    ],
     category: 'personal',
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    subtasks: [
+      {
+        id: generateId(),
+        task_id: 'mock-task',
+        title: 'Make shopping list',
+        is_completed: true,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        id: generateId(),
+        task_id: 'mock-task',
+        title: 'Check pantry inventory',
+        is_completed: true,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        id: generateId(),
+        task_id: 'mock-task',
+        title: 'Visit supermarket',
+        is_completed: false,
+        created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+      },
+    ],
   },
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Call mom',
     description: "Don't forget to wish her happy birthday",
-    dueDate: today.toISOString(),
-    dueTime: new Date(today.setHours(18, 0, 0, 0)).toISOString(),
-    isCompleted: true,
-    completedAt: new Date(today.setHours(17, 30, 0, 0)).toISOString(),
+    due_date: dayjs(today).format('YYYY-MM-DD'),
+    due_time: dayjs(today).set('hour', 18).set('minute', 0).format('HH:mm:ss'),
+    is_completed: true,
+    completed_at: dayjs(today)
+      .set('hour', 17)
+      .set('minute', 30)
+      .format('YYYY-MM-DD HH:mm:ss'),
     priority: 'high',
     category: 'personal',
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Review quarterly reports',
     description: 'Analyze Q2 performance and prepare summary',
-    dueDate: tomorrow.toISOString(),
-    isCompleted: false,
+    due_date: dayjs(tomorrow).format('YYYY-MM-DD'),
+    due_time: null,
+    is_completed: false,
+    completed_at: null,
     priority: 'medium',
     category: 'work',
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Schedule dentist appointment',
-    dueDate: today.toISOString(),
-    isCompleted: false,
+    description: null,
+    due_date: dayjs(today).format('YYYY-MM-DD'),
+    due_time: null,
+    is_completed: false,
+    completed_at: null,
     priority: 'low',
     category: 'health',
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
 ];
 
@@ -88,35 +150,40 @@ const tasks: Task[] = [
 const notes: Note[] = [
   {
     id: generateId(),
+    user_id: 'mock-user',
     title: 'Meeting Notes',
-    content: 'Discussed new project timeline. Key points:\n- Launch in September\n- Marketing starts in August\n- Team assignments need to be finalized by Friday\n\nFollow up with Sarah about the budget approval.',
+    content: 'Discuss project timeline and resource allocation',
     tags: ['work', 'meeting'],
-    createdAt: yesterday.toISOString(),
-    updatedAt: yesterday.toISOString(),
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
   {
     id: generateId(),
+    user_id: 'mock-user',
+    title: 'Shopping List',
+    content: 'Milk, eggs, bread, fruits',
+    tags: ['personal', 'shopping'],
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+  },
+  {
+    id: generateId(),
+    user_id: 'mock-user',
     title: 'Book Recommendations',
-    content: '1. Atomic Habits by James Clear\n2. Deep Work by Cal Newport\n3. The Psychology of Money by Morgan Housel\n\nStart with Atomic Habits.',
-    tags: ['reading', 'personal'],
-    createdAt: new Date(yesterday.setDate(yesterday.getDate() - 2)).toISOString(),
-    updatedAt: yesterday.toISOString(),
+    content: '1. Atomic Habits\n2. Deep Work\n3. The Psychology of Money',
+    tags: ['personal', 'reading'],
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
   {
     id: generateId(),
-    title: 'Weekly Goals',
-    content: '- Complete project presentation\n- Run 3 times\n- Read 2 chapters of current book\n- Meal prep for the week\n- Call grandparents',
-    tags: ['goals', 'personal'],
-    createdAt: new Date(yesterday.setDate(yesterday.getDate() - 1)).toISOString(),
-    updatedAt: yesterday.toISOString(),
-  },
-  {
-    id: generateId(),
-    title: 'Gift Ideas',
-    content: "Mom's Birthday:\n- Scented candles\n- Cooking class voucher\n- Handmade photo album\n\nDad's Birthday:\n- Grilling accessories\n- Wireless headphones\n- Golf lessons",
-    tags: ['shopping', 'personal'],
-    createdAt: new Date(yesterday.setDate(yesterday.getDate() - 5)).toISOString(),
-    updatedAt: yesterday.toISOString(),
+    user_id: 'mock-user',
+    title: 'Project Ideas',
+    content:
+      '1. Mobile app for habit tracking\n2. Recipe sharing platform\n3. Fitness progress tracker',
+    tags: ['work', 'ideas'],
+    created_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
+    updated_at: dayjs(yesterday).format('YYYY-MM-DD HH:mm:ss'),
   },
 ];
 
@@ -124,18 +191,22 @@ const notes: Note[] = [
 const generatePastDates = (count: number) => {
   const dates = [];
   const now = new Date();
-  
+
   for (let i = 0; i < count; i++) {
     const date = new Date(now);
     date.setDate(date.getDate() - i);
     dates.push(date.toISOString());
   }
-  
+
   return dates;
 };
 
 // Create completions with some random gaps
-const createCompletions = (dates: string[], streak: number, consistency = 0.8) => {
+const createCompletions = (
+  dates: string[],
+  streak: number,
+  consistency = 0.8
+) => {
   return dates.map((date, index) => ({
     date,
     completed: index < streak || Math.random() < consistency,

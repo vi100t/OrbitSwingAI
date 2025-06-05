@@ -7,14 +7,16 @@ import {
   TouchableOpacity,
   Text,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
-import { useStore } from '@/store';
 import GlassCard from '@/components/ui/GlassCard';
+import { useTasks } from '@/hooks/useSupabase';
+import { Task } from '@/types/task';
 import {
   Calendar,
   Clock,
@@ -25,16 +27,12 @@ import {
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
-import { useTasks } from '@/hooks/useSupabase';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { createTask, updateTask, deleteTask, generateSubtasks } = useTasks();
-  const { session } = useAuth();
-
+  const { tasks, updateTask, deleteTask, generateSubtasks } = useTasks();
+  const [task, setTask] = useState<Task | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState(new Date());
@@ -50,106 +48,50 @@ export default function TaskDetailScreen() {
 
   useEffect(() => {
     if (id) {
-      // Load task data
-      const loadTask = async () => {
-        try {
-          const { data: task, error } = await supabase
-            .from('tasks')
-            .select('*, subtasks(*)')
-            .eq('id', id)
-            .single();
-
-          if (error) {
-            console.error('Error loading task:', error);
-            return;
-          }
-
-          if (task) {
-            setTitle(task.title);
-            setDescription(task.description || '');
-            setDueDate(new Date(task.due_date));
-            setDueTime(task.due_time ? new Date(task.due_time) : null);
-            setPriority(task.priority as 'low' | 'medium' | 'high');
-            setIsCompleted(task.is_completed);
-            setSubtasks(
-              task.subtasks?.map((st: any) => ({
-                id: st.id,
-                title: st.title,
-                isCompleted: st.is_completed,
-              })) || []
-            );
-          }
-        } catch (err) {
-          console.error('Error in loadTask:', err);
-        }
-      };
-
-      loadTask();
+      const foundTask = tasks.find((t) => t.id === id);
+      if (foundTask) {
+        setTask(foundTask);
+        setTitle(foundTask.title);
+        setDescription(foundTask.description || '');
+        setDueDate(dayjs(foundTask.due_date).toDate());
+        setDueTime(
+          foundTask.due_time ? dayjs(foundTask.due_time).toDate() : null
+        );
+        setPriority(foundTask.priority as 'low' | 'medium' | 'high');
+        setIsCompleted(foundTask.is_completed);
+        setSubtasks(
+          (foundTask as Task).subtasks?.map(
+            (st: { id: string; title: string; is_completed: boolean }) => ({
+              id: st.id,
+              title: st.title,
+              isCompleted: st.is_completed,
+            })
+          ) || []
+        );
+      }
     }
-  }, [id]);
+  }, [id, tasks]);
 
   const handleSave = async () => {
-    try {
-      if (!session?.user?.id) {
-        console.error('No user session');
-        return;
-      }
+    if (!task) return;
 
-      const taskData = {
+    try {
+      await updateTask(task.id, {
         title: title.trim(),
         description: description.trim() || null,
-        due_date: dueDate.toISOString(),
-        due_time: dueTime?.toISOString() ?? null,
+        due_date: dayjs(dueDate).format('YYYY-MM-DD'),
+        due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : null,
         priority,
         is_completed: isCompleted,
-        updated_at: new Date().toISOString(),
+        updated_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
         subtasks: subtasks.map((subtask) => ({
           id: subtask.id,
           title: subtask.title,
           is_completed: subtask.isCompleted,
-          task_id: id as string,
+          task_id: task.id,
+          created_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
         })),
-      };
-
-      if (id) {
-        // For updates, we need to ensure we're sending all fields
-        const updateData = {
-          title: taskData.title,
-          description: taskData.description,
-          due_date: taskData.due_date,
-          due_time: taskData.due_time,
-          priority: taskData.priority,
-          is_completed: taskData.is_completed,
-          updated_at: taskData.updated_at,
-          subtasks: taskData.subtasks,
-        };
-
-        const updatedTask = await updateTask(id as string, updateData);
-        if (!updatedTask) {
-          console.error('Failed to update task');
-          return;
-        }
-        console.log('Task updated successfully:', updatedTask);
-      } else {
-        const newTask = await createTask({
-          ...taskData,
-          user_id: session.user.id,
-          created_at: new Date().toISOString(),
-        });
-        if (!newTask) {
-          console.error('Failed to create task');
-          return;
-        }
-        console.log('Task created successfully:', newTask);
-
-        // Generate AI subtasks
-        const aiSubtasks = await generateSubtasks(title, description);
-        if (aiSubtasks) {
-          console.log('Generated subtasks:', aiSubtasks);
-          // Handle AI generated subtasks
-        }
-      }
-
+      });
       router.back();
     } catch (error) {
       console.error('Error saving task:', error);
@@ -157,19 +99,9 @@ export default function TaskDetailScreen() {
   };
 
   const handleDelete = async () => {
-    try {
-      if (!id) return;
-
-      const success = await deleteTask(id as string);
-      if (success) {
-        console.log('Task deleted successfully');
-        router.back();
-      } else {
-        console.error('Failed to delete task');
-      }
-    } catch (error) {
-      console.error('Error deleting task:', error);
-    }
+    if (!task) return;
+    await deleteTask(task.id);
+    router.back();
   };
 
   const handleAddSubtask = () => {
@@ -194,6 +126,48 @@ export default function TaskDetailScreen() {
     );
   };
 
+  const removeSubtask = (subtaskId: string) => {
+    setSubtasks(subtasks.filter((st) => st.id !== subtaskId));
+  };
+
+  const handleGenerateSubtasks = async () => {
+    try {
+      const generatedSubtasks = await generateSubtasks(title, description);
+      if (generatedSubtasks && generatedSubtasks.length > 0) {
+        setSubtasks(
+          generatedSubtasks.map((subtask: string) => ({
+            id: Math.random().toString(),
+            title: subtask,
+            isCompleted: false,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error('Error generating subtasks:', error);
+    }
+  };
+
+  const getPriorityColor = (
+    priority: string,
+    opacity: number = 1,
+    isDark: boolean = false
+  ) => {
+    switch (priority) {
+      case 'high':
+        return isDark
+          ? `rgba(183, 28, 28, ${opacity})` // Darker red
+          : `rgba(244, 67, 54, ${opacity})`; // Original red
+      case 'medium':
+        return isDark
+          ? `rgba(194, 107, 24, ${opacity})` // Darker orange
+          : `rgba(255, 152, 0, ${opacity})`; // Original orange
+      default:
+        return isDark
+          ? `rgba(13, 71, 161, ${opacity})` // Darker blue
+          : `rgba(33, 150, 243, ${opacity})`; // Original blue
+    }
+  };
+
   const PriorityButton = ({
     value,
     label,
@@ -210,6 +184,10 @@ export default function TaskDetailScreen() {
             value,
             priority === value ? 1 : 0.1
           ),
+          borderColor:
+            priority === value
+              ? getPriorityColor(value, 0.3, true)
+              : 'transparent',
         },
       ]}
       onPress={() => setPriority(value as 'low' | 'medium' | 'high')}
@@ -217,7 +195,10 @@ export default function TaskDetailScreen() {
       <Text
         style={[
           styles.priorityButtonText,
-          { color: getPriorityColor(value, priority === value ? 1 : 0.7) },
+          {
+            color:
+              priority === value ? '#fff' : getPriorityColor(value, 0.7, true),
+          },
         ]}
       >
         {label}
@@ -225,23 +206,34 @@ export default function TaskDetailScreen() {
     </TouchableOpacity>
   );
 
+  if (!task) {
+    return (
+      <GlassBg>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Header title="Loading Task..." showBack />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        </SafeAreaView>
+      </GlassBg>
+    );
+  }
+
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
         <Header
-          title={id ? 'Edit Task' : 'New Task'}
+          title="Edit Task"
           showBack
           showNotifications={false}
           rightComponent={
             <View style={styles.headerButtons}>
-              {id && (
-                <TouchableOpacity
-                  onPress={handleDelete}
-                  style={[styles.headerButton, styles.deleteButton]}
-                >
-                  <Trash2 size={24} color={Colors.error} />
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                onPress={handleDelete}
+                style={[styles.headerButton, styles.deleteButton]}
+              >
+                <Trash2 size={24} color={Colors.error} />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSave}
                 style={[styles.headerButton, styles.saveButton]}
@@ -252,7 +244,10 @@ export default function TaskDetailScreen() {
           }
         />
 
-        <ScrollView style={styles.content}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+        >
           <GlassCard style={styles.card}>
             <TextInput
               style={styles.titleInput}
@@ -304,45 +299,68 @@ export default function TaskDetailScreen() {
             </View>
 
             <View style={styles.subtasksContainer}>
-              <Text style={styles.sectionTitle}>Subtasks</Text>
-              <View style={styles.subtaskInput}>
-                <TextInput
-                  style={styles.subtaskTextInput}
-                  value={newSubtask}
-                  onChangeText={setNewSubtask}
-                  placeholder="Add subtask"
-                  placeholderTextColor={Colors.secondaryText}
-                  onSubmitEditing={handleAddSubtask}
-                />
+              <View style={styles.subtasksHeader}>
+                <Text style={styles.sectionTitle}>Subtasks</Text>
                 <TouchableOpacity
-                  style={styles.addSubtaskButton}
-                  onPress={handleAddSubtask}
+                  style={styles.generateButton}
+                  onPress={handleGenerateSubtasks}
                 >
-                  <Plus size={20} color="white" />
+                  <Text style={styles.generateButtonText}>Generate</Text>
                 </TouchableOpacity>
               </View>
-              <View style={styles.subtaskList}>
+
+              <View style={styles.subtasksContainer}>
                 {subtasks.map((subtask) => (
-                  <TouchableOpacity
-                    key={subtask.id}
-                    style={styles.subtaskItem}
-                    onPress={() => toggleSubtask(subtask.id)}
-                  >
-                    {subtask.isCompleted ? (
-                      <CheckSquare size={20} color={Colors.primary} />
-                    ) : (
-                      <Square size={20} color={Colors.text} />
-                    )}
-                    <Text
-                      style={[
-                        styles.subtaskText,
-                        subtask.isCompleted && styles.completedSubtask,
-                      ]}
+                  <View key={subtask.id} style={styles.subtaskItem}>
+                    <TouchableOpacity
+                      style={styles.subtaskCheckbox}
+                      onPress={() => toggleSubtask(subtask.id)}
                     >
-                      {subtask.title}
-                    </Text>
-                  </TouchableOpacity>
+                      {subtask.isCompleted ? (
+                        <CheckSquare size={20} color={Colors.primary} />
+                      ) : (
+                        <Square size={20} color={Colors.secondaryText} />
+                      )}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={styles.subtaskInput}
+                      value={subtask.title}
+                      onChangeText={(text) =>
+                        setSubtasks(
+                          subtasks.map((st) =>
+                            st.id === subtask.id ? { ...st, title: text } : st
+                          )
+                        )
+                      }
+                      placeholder="Subtask"
+                      placeholderTextColor={Colors.secondaryText}
+                    />
+                    <TouchableOpacity
+                      style={styles.removeSubtaskButton}
+                      onPress={() => removeSubtask(subtask.id)}
+                    >
+                      <Text style={styles.removeSubtaskButtonText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
                 ))}
+
+                <View style={styles.addSubtaskContainer}>
+                  <TouchableOpacity
+                    style={styles.subtaskCheckbox}
+                    onPress={() => setNewSubtask('')}
+                  >
+                    <Square size={20} color={Colors.secondaryText} />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={styles.subtaskInput}
+                    value={newSubtask}
+                    onChangeText={setNewSubtask}
+                    placeholder="Add subtask"
+                    placeholderTextColor={Colors.secondaryText}
+                    onSubmitEditing={handleAddSubtask}
+                    returnKeyType="done"
+                  />
+                </View>
               </View>
             </View>
           </GlassCard>
@@ -363,33 +381,51 @@ export default function TaskDetailScreen() {
         )}
 
         {showTimePicker && (
-          <DateTimePicker
-            value={dueTime || new Date()}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={(event, selectedTime) => {
-              setShowTimePicker(false);
-              if (selectedTime) {
-                setDueTime(selectedTime);
-              }
-            }}
-          />
+          <View style={styles.timePickerContainer}>
+            <View style={styles.timePickerModal}>
+              <DateTimePicker
+                value={dueTime || new Date()}
+                mode="time"
+                display="spinner"
+                onChange={(event, selectedTime) => {
+                  if (selectedTime) {
+                    setDueTime(selectedTime);
+                  }
+                }}
+                textColor={Colors.text}
+                themeVariant="light"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  borderRadius: 12,
+                  height: 200,
+                  width: 200,
+                }}
+              />
+              <View style={styles.timePickerButtons}>
+                <TouchableOpacity
+                  style={[styles.timePickerButton, styles.cancelButton]}
+                  onPress={() => setShowTimePicker(false)}
+                >
+                  <Text style={styles.timePickerButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.timePickerButton, styles.doneButton]}
+                  onPress={() => setShowTimePicker(false)}
+                >
+                  <Text
+                    style={[styles.timePickerButtonText, styles.doneButtonText]}
+                  >
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         )}
       </SafeAreaView>
     </GlassBg>
   );
 }
-
-const getPriorityColor = (priority: string, opacity: number = 1) => {
-  switch (priority) {
-    case 'high':
-      return `rgba(244, 67, 54, ${opacity})`;
-    case 'medium':
-      return `rgba(255, 152, 0, ${opacity})`;
-    default:
-      return `rgba(33, 150, 243, ${opacity})`;
-  }
-};
 
 const styles = StyleSheet.create({
   container: {
@@ -398,8 +434,15 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 20,
-    height: '100%',
+    paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   card: {
     marginBottom: 20,
@@ -455,10 +498,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 4,
     alignItems: 'center',
+    borderWidth: 2,
   },
   priorityButtonActive: {
     borderWidth: 2,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   priorityButtonText: {
     fontFamily: 'Inter-Medium',
@@ -479,43 +522,56 @@ const styles = StyleSheet.create({
   subtasksContainer: {
     marginTop: 20,
   },
-  subtaskInput: {
+  subtasksHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  subtaskTextInput: {
-    flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: Colors.text,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    padding: 8,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  addSubtaskButton: {
+  generateButton: {
     backgroundColor: Colors.primary,
-    padding: 8,
-    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
   },
-  subtaskList: {
-    marginTop: 8,
+  generateButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: 'white',
   },
   subtaskItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     marginBottom: 8,
   },
-  subtaskText: {
+  subtaskCheckbox: {
+    marginRight: 8,
+  },
+  subtaskInput: {
+    flex: 1,
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: Colors.text,
-    marginLeft: 8,
   },
-  completedSubtask: {
-    textDecorationLine: 'line-through',
+  removeSubtaskButton: {
+    padding: 4,
+  },
+  removeSubtaskButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 18,
     color: Colors.secondaryText,
+  },
+  addSubtaskContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -525,5 +581,48 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 8,
+  },
+  timePickerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  timePickerModal: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+  },
+  timePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 16,
+    gap: 12,
+  },
+  timePickerButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  doneButton: {
+    backgroundColor: Colors.primary,
+  },
+  timePickerButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 16,
+    color: Colors.text,
+  },
+  doneButtonText: {
+    color: '#fff',
   },
 });

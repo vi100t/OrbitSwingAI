@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   },
   headerBgWeb: {
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    backdropFilter: 'blur(10px)',
+    // backdropFilter: 'blur(10px)',
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
     borderBottomWidth: 1,
   },
