@@ -11,7 +11,7 @@ type Props = {
 };
 
 const GlassBg: React.FC<Props> = ({ children }) => {
-  // Creating animated values for each bubble
+  // Create animations ref only once
   const animations = useRef(
     Array.from({ length: BUBBLE_COUNT }).map(() => ({
       position: new Animated.ValueXY({
@@ -29,7 +29,7 @@ const GlassBg: React.FC<Props> = ({ children }) => {
     const newY = Math.random() * height;
     const duration = Math.random() * 15000 + 10000; // 10-25 seconds
 
-    Animated.parallel([
+    return Animated.parallel([
       Animated.timing(animations[index].position, {
         toValue: { x: newX, y: newY },
         duration,
@@ -59,17 +59,25 @@ const GlassBg: React.FC<Props> = ({ children }) => {
           useNativeDriver: false,
         }),
       ]),
-    ]).start(() => {
-      animateBubble(index);
-    });
+    ]);
   };
 
   useEffect(() => {
+    // Array to store animation references
+    const animationRefs: Animated.CompositeAnimation[] = [];
+
     // Start animations for each bubble
     animations.forEach((_, index) => {
-      animateBubble(index);
+      const animation = animateBubble(index);
+      animation.start();
+      animationRefs.push(animation);
     });
-  }, []);
+
+    // Cleanup function to stop animations
+    return () => {
+      animationRefs.forEach(anim => anim.stop());
+    };
+  }, []); // Empty dependency array since animations ref is stable
 
   const getBubbleColor = (index: number) => {
     const colors = [
