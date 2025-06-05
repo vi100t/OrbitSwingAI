@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -23,10 +23,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function CalendarScreen() {
   const { tasks, loading } = useTasks();
   const router = useRouter();
-  const [items, setItems] = useState({});
 
-  useEffect(() => {
-    // Transform tasks into Agenda items format
+  // Memoize agenda items to prevent unnecessary re-renders
+  const items = useMemo(() => {
     const agendaItems = {};
     tasks.forEach(task => {
       const date = dayjs(task.due_date).format('YYYY-MM-DD');
@@ -35,25 +34,34 @@ export default function CalendarScreen() {
       }
       agendaItems[date].push(task);
     });
-    setItems(agendaItems);
+    return agendaItems;
   }, [tasks]);
 
-  const renderItem = (item) => {
-    return (
-      <TaskItem
-        task={item}
-        onPress={() => router.push(`/tasks/${item.id}`)}
-      />
-    );
-  };
+  const renderItem = (item) => (
+    <TaskItem
+      task={item}
+      onPress={() => router.push(`/tasks/${item.id}`)}
+    />
+  );
 
-  const renderEmptyDate = () => {
+  const renderEmptyDate = () => (
+    <View style={styles.emptyDate}>
+      <Text style={styles.emptyDateText}>No tasks for this day</Text>
+    </View>
+  );
+
+  if (loading) {
     return (
-      <View style={styles.emptyDate}>
-        <Text style={styles.emptyDateText}>No tasks for this day</Text>
-      </View>
+      <GlassBg>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Header title="Calendar" showVoice={true} />
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading calendar...</Text>
+          </View>
+        </SafeAreaView>
+      </GlassBg>
     );
-  };
+  }
 
   return (
     <GlassBg>
@@ -76,6 +84,7 @@ export default function CalendarScreen() {
             items={items}
             renderItem={renderItem}
             renderEmptyDate={renderEmptyDate}
+            showClosingKnob={false}
             theme={{
               agendaDayTextColor: Colors.text,
               agendaDayNumColor: Colors.text,
@@ -145,6 +154,16 @@ const styles = StyleSheet.create({
   emptyDateText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
+    color: Colors.secondaryText,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
     color: Colors.secondaryText,
   },
 });
