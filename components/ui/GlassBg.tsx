@@ -11,70 +11,61 @@ type Props = {
 };
 
 const GlassBg: React.FC<Props> = ({ children }) => {
-  // Create a single ref for all animation-related state
-  const animationState = useRef({
-    values: Array.from({ length: BUBBLE_COUNT }).map(() => ({
+  // Store animation values in a ref to persist across renders
+  const animationValues = useRef(
+    Array.from({ length: BUBBLE_COUNT }).map(() => ({
       position: new Animated.ValueXY({
         x: Math.random() * width,
         y: Math.random() * height,
       }),
       size: new Animated.Value(Math.random() * 100 + 50),
       opacity: new Animated.Value(Math.random() * 0.3 + 0.1),
-    })),
-    animations: [] as Animated.CompositeAnimation[],
-    mounted: true,
-  }).current;
+    }))
+  ).current;
 
-  // Function to create a single bubble animation
-  const createBubbleAnimation = (index: number): Animated.CompositeAnimation => {
-    const newX = Math.random() * width;
-    const newY = Math.random() * height;
-    const duration = Math.random() * 15000 + 10000;
-
-    return Animated.parallel([
-      Animated.timing(animationState.values[index].position, {
-        toValue: { x: newX, y: newY },
-        duration,
-        useNativeDriver: true,
-      }),
-      Animated.timing(animationState.values[index].opacity, {
-        toValue: Math.random() * 0.3 + 0.1,
-        duration,
-        useNativeDriver: true,
-      }),
-      Animated.timing(animationState.values[index].size, {
-        toValue: Math.random() * 100 + 50,
-        duration,
-        useNativeDriver: false,
-      }),
-    ]);
-  };
-
-  // Start animation for a specific bubble
-  const startBubbleAnimation = (index: number) => {
-    if (!animationState.mounted) return;
-
-    const animation = createBubbleAnimation(index);
-    animationState.animations[index] = animation;
-
-    animation.start(() => {
-      if (animationState.mounted) {
-        startBubbleAnimation(index);
-      }
-    });
-  };
+  // Store mounted state in a ref
+  const mounted = useRef(true);
 
   useEffect(() => {
-    // Start animations for all bubbles
+    // Animation function
+    const animateBubble = (index: number) => {
+      if (!mounted.current) return;
+
+      const newX = Math.random() * width;
+      const newY = Math.random() * height;
+      const duration = Math.random() * 15000 + 10000;
+
+      Animated.parallel([
+        Animated.timing(animationValues[index].position, {
+          toValue: { x: newX, y: newY },
+          duration,
+          useNativeDriver: false,
+        }),
+        Animated.timing(animationValues[index].opacity, {
+          toValue: Math.random() * 0.3 + 0.1,
+          duration,
+          useNativeDriver: false,
+        }),
+        Animated.timing(animationValues[index].size, {
+          toValue: Math.random() * 100 + 50,
+          duration,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        if (mounted.current) {
+          animateBubble(index);
+        }
+      });
+    };
+
+    // Start animations
     for (let i = 0; i < BUBBLE_COUNT; i++) {
-      startBubbleAnimation(i);
+      animateBubble(i);
     }
 
-    // Cleanup function
+    // Cleanup
     return () => {
-      animationState.mounted = false;
-      animationState.animations.forEach(anim => anim?.stop());
-      animationState.animations = [];
+      mounted.current = false;
     };
   }, []);
 
@@ -97,16 +88,14 @@ const GlassBg: React.FC<Props> = ({ children }) => {
         style={styles.gradient}
       />
       
-      {animationState.values.map((anim, index) => (
+      {animationValues.map((anim, index) => (
         <Animated.View
           key={index}
           style={[
             styles.bubble,
             {
-              transform: [
-                { translateX: anim.position.x },
-                { translateY: anim.position.y },
-              ],
+              left: anim.position.x,
+              top: anim.position.y,
               width: anim.size,
               height: anim.size,
               opacity: anim.opacity,
