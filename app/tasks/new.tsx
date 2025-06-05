@@ -33,7 +33,7 @@ export default function NewTaskScreen() {
   const router = useRouter();
   const { createTask, generateSubtasks, createSubtasks } = useTasks();
   const { session } = useAuth();
-  const [userId] = useState(() => uuidv4()); // Generate a UUID for this session
+  const [userId] = useState(() => uuidv4());
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -46,9 +46,13 @@ export default function NewTaskScreen() {
   const [newSubtask, setNewSubtask] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [repeatType, setRepeatType] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [repeatFrequency, setRepeatFrequency] = useState(1);
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatEnds, setRepeatEnds] = useState<Date | null>(null);
+  const [showRepeatEndsDatePicker, setShowRepeatEndsDatePicker] = useState(false);
 
   const handleSave = async () => {
-    console.log('handleSave called');
     try {
       if (!session?.user?.id) {
         alert('Please sign in to create tasks');
@@ -57,103 +61,45 @@ export default function NewTaskScreen() {
       }
 
       if (!title.trim()) {
-        console.log('Title validation failed');
         alert('Please enter a task title');
         return;
       }
-
-      console.log('Current subtasks state:', subtasks);
-
-      // Format the time with the date for proper timestamp
-      const formattedTime = dueTime
-        ? dayjs(dueDate)
-            .hour(dayjs(dueTime).hour())
-            .minute(dayjs(dueTime).minute())
-            .format('YYYY-MM-DD HH:mm:ss')
-        : null;
 
       const taskData = {
         title: title.trim(),
         description: description.trim() || null,
         due_date: dayjs(dueDate).format('YYYY-MM-DD'),
-        due_time: formattedTime,
+        due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : null,
         priority,
         user_id: session.user.id,
         is_completed: false,
         created_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
         updated_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        repeat_type: repeatType === 'none' ? null : repeatType,
+        repeat_frequency: repeatType === 'none' ? null : repeatFrequency,
+        repeat_days: repeatType === 'weekly' ? repeatDays : null,
+        repeat_ends: repeatEnds ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss') : null,
       };
 
-      console.log(
-        'About to create task with data:',
-        JSON.stringify(taskData, null, 2)
-      );
-
-      // Create task using useTasks hook
       const newTask = await createTask(taskData);
       if (!newTask) {
-        console.error('Failed to create task');
         alert('Failed to create task');
         return;
       }
 
-      console.log('Task created successfully:', newTask);
-
-      // Create subtasks if any exist
       if (subtasks.length > 0) {
-        console.log('Creating subtasks...');
         const subtaskData = subtasks.map((subtask) => ({
           title: subtask.title,
           is_completed: subtask.isCompleted,
         }));
 
-        const insertedSubtasks = await createSubtasks(newTask.id, subtaskData);
-        if (!insertedSubtasks) {
-          console.error('Failed to create subtasks');
-          alert('Failed to create subtasks');
-        } else {
-          console.log('Subtasks created successfully:', insertedSubtasks);
-        }
-      } else {
-        console.log('No subtasks to create');
+        await createSubtasks(newTask.id, subtaskData);
       }
 
-      // Generate AI subtasks
-      try {
-        console.log('Generating AI subtasks...');
-        const aiSubtasks = await generateSubtasks(title, description);
-        if (aiSubtasks && aiSubtasks.length > 0) {
-          const aiSubtaskData = aiSubtasks.map((subtask: string) => ({
-            title: subtask,
-            is_completed: false,
-          }));
-
-          const insertedAiSubtasks = await createSubtasks(
-            newTask.id,
-            aiSubtaskData
-          );
-          if (!insertedAiSubtasks) {
-            console.error('Failed to create AI subtasks');
-            alert('Failed to create AI subtasks');
-          } else {
-            console.log(
-              'AI subtasks created successfully:',
-              insertedAiSubtasks
-            );
-          }
-        } else {
-          console.log('No AI subtasks generated');
-        }
-      } catch (error) {
-        console.error('Error generating AI subtasks:', error);
-        alert('Failed to generate AI subtasks: ' + (error as Error).message);
-      }
-
-      console.log('Task creation completed, navigating back...');
       router.back();
     } catch (error) {
       console.error('Error in handleSave:', error);
-      alert('An error occurred while creating the task. Please try again.');
+      alert('An error occurred while creating the task');
     }
   };
 
@@ -299,6 +245,87 @@ export default function NewTaskScreen() {
               </TouchableOpacity>
             </View>
 
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Repeat</Text>
+              <View style={styles.repeatTypeContainer}>
+                {['none', 'daily', 'weekly', 'monthly'].map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.repeatTypeButton,
+                      repeatType === type && styles.repeatTypeButtonActive,
+                    ]}
+                    onPress={() => setRepeatType(type as typeof repeatType)}
+                  >
+                    <Text
+                      style={[
+                        styles.repeatTypeText,
+                        repeatType === type && styles.repeatTypeTextActive,
+                      ]}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {repeatType !== 'none' && (
+                <>
+                  <View style={styles.repeatFrequencyContainer}>
+                    <Text style={styles.label}>Repeat every</Text>
+                    <TextInput
+                      style={styles.repeatFrequencyInput}
+                      value={repeatFrequency.toString()}
+                      onChangeText={(text) => setRepeatFrequency(parseInt(text) || 1)}
+                      keyboardType="number-pad"
+                    />
+                    <Text style={styles.label}>{repeatType === 'daily' ? 'days' : repeatType === 'weekly' ? 'weeks' : 'months'}</Text>
+                  </View>
+
+                  {repeatType === 'weekly' && (
+                    <View style={styles.weekDaysContainer}>
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={[
+                            styles.weekDayButton,
+                            repeatDays.includes(index) && styles.weekDayButtonActive,
+                          ]}
+                          onPress={() => {
+                            if (repeatDays.includes(index)) {
+                              setRepeatDays(repeatDays.filter((d) => d !== index));
+                            } else {
+                              setRepeatDays([...repeatDays, index].sort());
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.weekDayText,
+                              repeatDays.includes(index) && styles.weekDayTextActive,
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.repeatEndsButton}
+                    onPress={() => setShowRepeatEndsDatePicker(true)}
+                  >
+                    <Text style={styles.repeatEndsButtonText}>
+                      {repeatEnds
+                        ? `Ends on ${dayjs(repeatEnds).format('MMM D, YYYY')}`
+                        : 'Add end date'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+
             <View style={styles.priorityContainer}>
               <Text style={styles.sectionTitle}>Priority</Text>
               <View style={styles.priorityButtons}>
@@ -435,6 +462,21 @@ export default function NewTaskScreen() {
               </View>
             </View>
           </View>
+        )}
+
+        {showRepeatEndsDatePicker && (
+          <DateTimePicker
+            value={repeatEnds || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            minimumDate={new Date()}
+            onChange={(event, selectedDate) => {
+              setShowRepeatEndsDatePicker(false);
+              if (selectedDate) {
+                setRepeatEnds(selectedDate);
+              }
+            }}
+          />
         )}
       </SafeAreaView>
     </GlassBg>
@@ -653,5 +695,88 @@ const styles = StyleSheet.create({
   },
   doneButtonText: {
     color: '#fff',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  repeatTypeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  repeatTypeButton: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  repeatTypeButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  repeatTypeText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  repeatTypeTextActive: {
+    color: 'white',
+  },
+  repeatFrequencyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  repeatFrequencyInput: {
+    width: 50,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: 8,
+    marginHorizontal: 8,
+    textAlign: 'center',
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: Colors.text,
+  },
+  label: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+  },
+  weekDaysContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  weekDayButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  weekDayButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  weekDayText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  weekDayTextActive: {
+    color: 'white',
+  },
+  repeatEndsButton: {
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  repeatEndsButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
   },
 });
