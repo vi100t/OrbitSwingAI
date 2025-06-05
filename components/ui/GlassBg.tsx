@@ -11,8 +11,8 @@ type Props = {
 };
 
 const GlassBg: React.FC<Props> = ({ children }) => {
-  // Create animations ref only once
-  const animations = useRef(
+  // Store animation values in a ref to persist across renders
+  const animationValues = useRef(
     Array.from({ length: BUBBLE_COUNT }).map(() => ({
       position: new Animated.ValueXY({
         x: Math.random() * width,
@@ -23,37 +23,40 @@ const GlassBg: React.FC<Props> = ({ children }) => {
     }))
   ).current;
 
-  // Function to animate a bubble
-  const animateBubble = (index: number) => {
+  // Store active animations in a ref
+  const activeAnimations = useRef<Animated.CompositeAnimation[]>([]);
+
+  // Function to create a single bubble animation
+  const createBubbleAnimation = (index: number) => {
     const newX = Math.random() * width;
     const newY = Math.random() * height;
     const duration = Math.random() * 15000 + 10000; // 10-25 seconds
 
     return Animated.parallel([
-      Animated.timing(animations[index].position, {
+      Animated.timing(animationValues[index].position, {
         toValue: { x: newX, y: newY },
         duration,
         useNativeDriver: false,
       }),
       Animated.sequence([
-        Animated.timing(animations[index].opacity, {
+        Animated.timing(animationValues[index].opacity, {
           toValue: Math.random() * 0.3 + 0.1,
           duration: duration / 2,
           useNativeDriver: false,
         }),
-        Animated.timing(animations[index].opacity, {
+        Animated.timing(animationValues[index].opacity, {
           toValue: Math.random() * 0.3 + 0.1,
           duration: duration / 2,
           useNativeDriver: false,
         }),
       ]),
       Animated.sequence([
-        Animated.timing(animations[index].size, {
+        Animated.timing(animationValues[index].size, {
           toValue: Math.random() * 100 + 50,
           duration: duration / 2,
           useNativeDriver: false,
         }),
-        Animated.timing(animations[index].size, {
+        Animated.timing(animationValues[index].size, {
           toValue: Math.random() * 100 + 50,
           duration: duration / 2,
           useNativeDriver: false,
@@ -62,22 +65,33 @@ const GlassBg: React.FC<Props> = ({ children }) => {
     ]);
   };
 
+  // Start animations
   useEffect(() => {
-    // Array to store animation references
-    const animationRefs: Animated.CompositeAnimation[] = [];
+    // Stop any existing animations
+    activeAnimations.current.forEach(anim => anim.stop());
+    activeAnimations.current = [];
 
-    // Start animations for each bubble
-    animations.forEach((_, index) => {
-      const animation = animateBubble(index);
-      animation.start();
-      animationRefs.push(animation);
-    });
+    // Create and start new animations
+    for (let i = 0; i < BUBBLE_COUNT; i++) {
+      const animation = createBubbleAnimation(i);
+      animation.start(() => {
+        // Recursively start next animation when current one completes
+        if (activeAnimations.current.includes(animation)) {
+          const newAnimation = createBubbleAnimation(i);
+          const index = activeAnimations.current.indexOf(animation);
+          activeAnimations.current[index] = newAnimation;
+          newAnimation.start();
+        }
+      });
+      activeAnimations.current.push(animation);
+    }
 
-    // Cleanup function to stop animations
+    // Cleanup function
     return () => {
-      animationRefs.forEach(anim => anim.stop());
+      activeAnimations.current.forEach(anim => anim.stop());
+      activeAnimations.current = [];
     };
-  }, []); // Empty dependency array since animations ref is stable
+  }, []); // Empty dependency array since we're using refs
 
   const getBubbleColor = (index: number) => {
     const colors = [
@@ -98,7 +112,7 @@ const GlassBg: React.FC<Props> = ({ children }) => {
         style={styles.gradient}
       />
       
-      {animations.map((anim, index) => (
+      {animationValues.map((anim, index) => (
         <Animated.View
           key={index}
           style={[
