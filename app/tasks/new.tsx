@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,8 +7,9 @@ import {
   TouchableOpacity,
   Text,
   Platform,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
@@ -23,17 +24,20 @@ import {
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
-import { useTasks } from '@/hooks/useSupabase';
+import { useTasks, useSupabase } from '@/hooks/useSupabase';
 import { supabase } from '@/lib/supabase';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '@/contexts/AuthContext';
+import { LabelSelector } from '@/components/LabelSelector';
 
 export default function NewTaskScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { createTask, generateSubtasks, createSubtasks } = useTasks();
   const { session } = useAuth();
   const [userId] = useState(() => uuidv4());
+  const { labels, loadingLabels, fetchLabels } = useSupabase();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -46,60 +50,73 @@ export default function NewTaskScreen() {
   const [newSubtask, setNewSubtask] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [repeatType, setRepeatType] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [repeatType, setRepeatType] = useState<
+    'none' | 'daily' | 'weekly' | 'monthly'
+  >('none');
   const [repeatFrequency, setRepeatFrequency] = useState(1);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatEnds, setRepeatEnds] = useState<Date | null>(null);
-  const [showRepeatEndsDatePicker, setShowRepeatEndsDatePicker] = useState(false);
+  const [showRepeatEndsDatePicker, setShowRepeatEndsDatePicker] =
+    useState(false);
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const [repeat, setRepeat] = useState(false);
+  const [repeatInterval, setRepeatInterval] = useState('daily');
+  const [repeatEndDate, setRepeatEndDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    fetchLabels();
+  }, []);
+
+  useEffect(() => {
+    if (params.selectedLabels) {
+      try {
+        const parsedLabels = JSON.parse(params.selectedLabels as string);
+        console.log('Received selected labels:', parsedLabels);
+        setSelectedLabels(parsedLabels);
+      } catch (error) {
+        console.error('Error parsing selected labels:', error);
+      }
+    }
+  }, [params.selectedLabels]);
+
+  console.log('Current labels:', labels);
+  console.log('Selected labels:', selectedLabels);
 
   const handleSave = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a task title');
+      return;
+    }
+
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'You must be logged in to create tasks');
+      return;
+    }
+
     try {
-      if (!session?.user?.id) {
-        alert('Please sign in to create tasks');
-        router.push('/login');
-        return;
-      }
-
-      if (!title.trim()) {
-        alert('Please enter a task title');
-        return;
-      }
-
       const taskData = {
         title: title.trim(),
-        description: description.trim() || null,
-        due_date: dayjs(dueDate).format('YYYY-MM-DD'),
-        due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : null,
-        priority,
+        description: description.trim(),
+        due_date: dueDate ? dayjs(dueDate).format('YYYY-MM-DD') : undefined,
+        due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : undefined,
+        priority: priority,
+        status: 'pending',
+        repeat_type: repeatType,
+        repeat_frequency: repeatFrequency,
+        repeat_days: repeatType === 'weekly' ? repeatDays : undefined,
+        repeat_ends: repeatEnds
+          ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss')
+          : undefined,
+        labels: selectedLabels,
         user_id: session.user.id,
-        is_completed: false,
-        created_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-        updated_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-        repeat_type: repeatType === 'none' ? null : repeatType,
-        repeat_frequency: repeatType === 'none' ? null : repeatFrequency,
-        repeat_days: repeatType === 'weekly' ? repeatDays : null,
-        repeat_ends: repeatEnds ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss') : null,
       };
 
-      const newTask = await createTask(taskData);
-      if (!newTask) {
-        alert('Failed to create task');
-        return;
-      }
-
-      if (subtasks.length > 0) {
-        const subtaskData = subtasks.map((subtask) => ({
-          title: subtask.title,
-          is_completed: subtask.isCompleted,
-        }));
-
-        await createSubtasks(newTask.id, subtaskData);
-      }
-
+      console.log('Saving task with data:', taskData);
+      await createTask(taskData);
       router.back();
     } catch (error) {
-      console.error('Error in handleSave:', error);
-      alert('An error occurred while creating the task');
+      console.error('Error creating task:', error);
+      Alert.alert('Error', 'Failed to create task');
     }
   };
 
@@ -142,6 +159,21 @@ export default function NewTaskScreen() {
     }
   };
 
+  const handleLabelSelect = (labelId: string) => {
+    setSelectedLabels((prev) =>
+      prev.includes(labelId)
+        ? prev.filter((id) => id !== labelId)
+        : [...prev, labelId]
+    );
+  };
+
+  const handleNavigateToLabels = () => {
+    router.push({
+      pathname: '/labels',
+      params: { selectedLabels: JSON.stringify(selectedLabels) },
+    });
+  };
+
   const PriorityButton = ({
     value,
     label,
@@ -179,6 +211,12 @@ export default function NewTaskScreen() {
       </Text>
     </TouchableOpacity>
   );
+
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    if (selectedTime) {
+      setDueTime(selectedTime);
+    }
+  };
 
   return (
     <GlassBg>
@@ -245,87 +283,6 @@ export default function NewTaskScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Repeat</Text>
-              <View style={styles.repeatTypeContainer}>
-                {['none', 'daily', 'weekly', 'monthly'].map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.repeatTypeButton,
-                      repeatType === type && styles.repeatTypeButtonActive,
-                    ]}
-                    onPress={() => setRepeatType(type as typeof repeatType)}
-                  >
-                    <Text
-                      style={[
-                        styles.repeatTypeText,
-                        repeatType === type && styles.repeatTypeTextActive,
-                      ]}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {repeatType !== 'none' && (
-                <>
-                  <View style={styles.repeatFrequencyContainer}>
-                    <Text style={styles.label}>Repeat every</Text>
-                    <TextInput
-                      style={styles.repeatFrequencyInput}
-                      value={repeatFrequency.toString()}
-                      onChangeText={(text) => setRepeatFrequency(parseInt(text) || 1)}
-                      keyboardType="number-pad"
-                    />
-                    <Text style={styles.label}>{repeatType === 'daily' ? 'days' : repeatType === 'weekly' ? 'weeks' : 'months'}</Text>
-                  </View>
-
-                  {repeatType === 'weekly' && (
-                    <View style={styles.weekDaysContainer}>
-                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={[
-                            styles.weekDayButton,
-                            repeatDays.includes(index) && styles.weekDayButtonActive,
-                          ]}
-                          onPress={() => {
-                            if (repeatDays.includes(index)) {
-                              setRepeatDays(repeatDays.filter((d) => d !== index));
-                            } else {
-                              setRepeatDays([...repeatDays, index].sort());
-                            }
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.weekDayText,
-                              repeatDays.includes(index) && styles.weekDayTextActive,
-                            ]}
-                          >
-                            {day}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.repeatEndsButton}
-                    onPress={() => setShowRepeatEndsDatePicker(true)}
-                  >
-                    <Text style={styles.repeatEndsButtonText}>
-                      {repeatEnds
-                        ? `Ends on ${dayjs(repeatEnds).format('MMM D, YYYY')}`
-                        : 'Add end date'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
-
             <View style={styles.priorityContainer}>
               <Text style={styles.sectionTitle}>Priority</Text>
               <View style={styles.priorityButtons}>
@@ -333,6 +290,205 @@ export default function NewTaskScreen() {
                 <PriorityButton value="medium" label="Medium" />
                 <PriorityButton value="high" label="High" />
               </View>
+            </View>
+
+            <View style={styles.labelsContainer}>
+              <View style={styles.labelsHeader}>
+                <Text style={styles.sectionTitle}>Labels</Text>
+                <TouchableOpacity
+                  style={styles.addLabelButton}
+                  onPress={handleNavigateToLabels}
+                >
+                  <Plus size={20} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.labelsList}>
+                {loadingLabels ? (
+                  <Text style={styles.loadingText}>Loading labels...</Text>
+                ) : labels.length === 0 ? (
+                  <Text style={styles.noLabelsText}>No labels available</Text>
+                ) : (
+                  labels
+                    .filter((label) => selectedLabels.includes(label.id))
+                    .map((label) => (
+                      <TouchableOpacity
+                        key={label.id}
+                        style={[
+                          styles.labelItem,
+                          { backgroundColor: label.color + '20' },
+                        ]}
+                        onPress={() => handleLabelSelect(label.id)}
+                      >
+                        <View
+                          style={[
+                            styles.labelColor,
+                            { backgroundColor: label.color },
+                          ]}
+                        />
+                        <Text
+                          style={[styles.labelText, { color: label.color }]}
+                        >
+                          {label.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                )}
+              </View>
+            </View>
+
+            <View style={styles.repeatContainer}>
+              <View style={styles.repeatHeader}>
+                <Text style={styles.sectionTitle}>Repeat</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleSwitch,
+                    repeatType !== 'none' && styles.toggleSwitchActive,
+                  ]}
+                  onPress={() =>
+                    setRepeatType(repeatType === 'none' ? 'daily' : 'none')
+                  }
+                >
+                  <View
+                    style={[
+                      styles.toggleKnob,
+                      repeatType !== 'none' && styles.toggleKnobActive,
+                    ]}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {repeatType !== 'none' && (
+                <>
+                  <View style={styles.repeatButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'daily' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('daily')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'daily' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Daily
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'weekly' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('weekly')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'weekly' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Weekly
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'monthly' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('monthly')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'monthly' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Monthly
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.repeatOptions}>
+                    <View style={styles.repeatFrequency}>
+                      <Text style={styles.repeatLabel}>Repeat every</Text>
+                      <View style={styles.frequencyInput}>
+                        <TextInput
+                          style={styles.frequencyText}
+                          value={repeatFrequency.toString()}
+                          onChangeText={(text) => {
+                            const num = parseInt(text);
+                            if (!isNaN(num) && num > 0) {
+                              setRepeatFrequency(num);
+                            }
+                          }}
+                          keyboardType="number-pad"
+                        />
+                        <Text style={styles.frequencyUnit}>
+                          {repeatType === 'daily'
+                            ? 'days'
+                            : repeatType === 'weekly'
+                            ? 'weeks'
+                            : 'months'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {repeatType === 'weekly' && (
+                      <View style={styles.weekDays}>
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(
+                          (day, index) => (
+                            <TouchableOpacity
+                              key={`${day}-${index}`}
+                              style={[
+                                styles.weekDay,
+                                repeatDays.includes(index) &&
+                                  styles.weekDayActive,
+                              ]}
+                              onPress={() => {
+                                if (repeatDays.includes(index)) {
+                                  setRepeatDays(
+                                    repeatDays.filter((d) => d !== index)
+                                  );
+                                } else {
+                                  setRepeatDays([...repeatDays, index]);
+                                }
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.weekDayText,
+                                  repeatDays.includes(index) &&
+                                    styles.weekDayTextActive,
+                                ]}
+                              >
+                                {day}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        )}
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.endsContainer}
+                      onPress={() => setShowRepeatEndsDatePicker(true)}
+                    >
+                      <Text style={styles.endsLabel}>Ends</Text>
+                      <Text style={styles.endsValue}>
+                        {repeatEnds
+                          ? dayjs(repeatEnds).format('MMM D, YYYY')
+                          : 'Never'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
 
             <View style={styles.subtasksContainer}>
@@ -408,60 +564,60 @@ export default function NewTaskScreen() {
         </ScrollView>
 
         {showDatePicker && (
-          <DateTimePicker
-            value={dueDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={(event, selectedDate) => {
-              setShowDatePicker(false);
-              if (selectedDate) {
-                setDueDate(selectedDate);
-              }
-            }}
-          />
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowDatePicker(false)}
+          >
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity
+                  style={styles.pickerDoneButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={dueDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    setDueDate(selectedDate);
+                  }
+                }}
+                style={{}}
+              />
+            </View>
+          </TouchableOpacity>
         )}
 
         {showTimePicker && (
-          <View style={styles.timePickerContainer}>
-            <View style={styles.timePickerModal}>
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowTimePicker(false)}
+          >
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity
+                  style={styles.pickerDoneButton}
+                  onPress={() => setShowTimePicker(false)}
+                >
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
               <DateTimePicker
                 value={dueTime || new Date()}
                 mode="time"
-                display="spinner"
-                onChange={(event, selectedTime) => {
-                  if (selectedTime) {
-                    setDueTime(selectedTime);
-                  }
-                }}
-                textColor={Colors.text}
-                themeVariant="light"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  borderRadius: 12,
-                  height: 200,
-                  width: 200,
-                }}
+                is24Hour={false}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleTimeChange}
+                style={{}}
               />
-              <View style={styles.timePickerButtons}>
-                <TouchableOpacity
-                  style={[styles.timePickerButton, styles.cancelButton]}
-                  onPress={() => setShowTimePicker(false)}
-                >
-                  <Text style={styles.timePickerButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.timePickerButton, styles.doneButton]}
-                  onPress={() => setShowTimePicker(false)}
-                >
-                  <Text
-                    style={[styles.timePickerButtonText, styles.doneButtonText]}
-                  >
-                    Done
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {showRepeatEndsDatePicker && (
@@ -562,12 +718,12 @@ const styles = StyleSheet.create({
   priorityButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 4,
   },
   priorityButton: {
     flex: 1,
     padding: 12,
     borderRadius: 8,
-    marginHorizontal: 4,
     alignItems: 'center',
     borderWidth: 2,
   },
@@ -696,68 +852,116 @@ const styles = StyleSheet.create({
   doneButtonText: {
     color: '#fff',
   },
-  section: {
-    marginBottom: 24,
+  repeatContainer: {
+    marginBottom: 20,
   },
-  repeatTypeContainer: {
+  repeatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 4,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    padding: 2,
+  },
+  toggleSwitchActive: {
+    backgroundColor: Colors.primary,
+  },
+  toggleKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  toggleKnobActive: {
+    transform: [{ translateX: 22 }],
+  },
+  repeatButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
+    gap: 4,
   },
-  repeatTypeButton: {
+  repeatButton: {
     flex: 1,
     padding: 12,
-    backgroundColor: 'rgba(124, 77, 255, 0.1)',
     borderRadius: 8,
-    marginHorizontal: 4,
     alignItems: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
   },
-  repeatTypeButtonActive: {
+  repeatButtonActive: {
     backgroundColor: Colors.primary,
   },
-  repeatTypeText: {
+  repeatButtonText: {
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     color: Colors.primary,
   },
-  repeatTypeTextActive: {
-    color: 'white',
+  repeatButtonTextActive: {
+    color: '#fff',
   },
-  repeatFrequencyContainer: {
+  repeatOptions: {
+    marginTop: 16,
+  },
+  repeatFrequency: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  repeatFrequencyInput: {
-    width: 50,
-    height: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: 8,
-    marginHorizontal: 8,
-    textAlign: 'center',
-    fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    color: Colors.text,
-  },
-  label: {
+  repeatLabel: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: Colors.text,
+    marginRight: 12,
   },
-  weekDaysContainer: {
+  frequencyInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  frequencyText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+    width: 40,
+    textAlign: 'center',
+  },
+  frequencyUnit: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.primary,
+    marginLeft: 4,
+  },
+  weekDays: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  weekDayButton: {
+  weekDay: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(124, 77, 255, 0.1)',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
   },
-  weekDayButtonActive: {
+  weekDayActive: {
     backgroundColor: Colors.primary,
   },
   weekDayText: {
@@ -766,17 +970,165 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   weekDayTextActive: {
-    color: 'white',
+    color: '#fff',
+  },
+  endsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+  },
+  endsLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+  },
+  endsValue: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  repeatEndsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  repeatEndsModal: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+  },
+  repeatEndsButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 16,
+    gap: 12,
   },
   repeatEndsButton: {
-    backgroundColor: 'rgba(124, 77, 255, 0.1)',
-    padding: 12,
+    flex: 1,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
   repeatEndsButtonText: {
     fontFamily: 'Inter-Medium',
+    fontSize: 16,
+    color: Colors.text,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  labelsContainer: {
+    marginBottom: 20,
+  },
+  labelsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addLabelButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  labelsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  labelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 77, 255, 0.2)',
+  },
+  labelColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  labelText: {
+    fontFamily: 'Inter-Medium',
     fontSize: 14,
+  },
+  selectedLabelText: {
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    textAlign: 'center',
+    padding: 12,
+  },
+  noLabelsText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    textAlign: 'center',
+    padding: 12,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    maxHeight: 300,
+  },
+  pickerHeader: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 2,
+  },
+  pickerDoneButton: {
+    padding: 8,
+  },
+  pickerDoneText: {
     color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -88,6 +88,14 @@ export default function DashboardScreen() {
               <View style={styles.loadingHabits}>
                 <ActivityIndicator size="small" color={Colors.primary} />
               </View>
+            ) : habits.length === 0 ? (
+              <View style={styles.emptyHabits}>
+                <Text style={styles.emptyText}>No habits yet</Text>
+                <Text style={styles.emptySubtext}>
+                  Habits are automatically created when you make a task
+                  repeatable
+                </Text>
+              </View>
             ) : (
               habits.map((habit) => (
                 <HabitStreak
@@ -165,6 +173,29 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyHabits: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'center',
+  },
+  emptyText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.secondaryText,
+    textAlign: 'center',
+    opacity: 0.8,
+    paddingHorizontal: 20,
   },
   heatmapContainer: {
     marginTop: 16,

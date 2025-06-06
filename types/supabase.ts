@@ -19,10 +19,15 @@ export interface Database {
           due_time: string | null;
           is_completed: boolean;
           completed_at: string | null;
-          priority: string;
+          priority: 'low' | 'medium' | 'high';
           category: string | null;
           created_at: string;
           updated_at: string;
+          repeat_type: 'none' | 'daily' | 'weekly' | 'monthly' | null;
+          repeat_frequency: number | null;
+          repeat_days: number[] | null;
+          repeat_ends: string | null;
+          labels: string[] | null;
         };
         Insert: {
           id?: string;
@@ -33,10 +38,15 @@ export interface Database {
           due_time?: string | null;
           is_completed?: boolean;
           completed_at?: string | null;
-          priority?: string;
+          priority?: 'low' | 'medium' | 'high';
           category?: string | null;
           created_at?: string;
           updated_at?: string;
+          repeat_type?: 'none' | 'daily' | 'weekly' | 'monthly' | null;
+          repeat_frequency?: number | null;
+          repeat_days?: number[] | null;
+          repeat_ends?: string | null;
+          labels?: string[] | null;
         };
         Update: {
           id?: string;
@@ -47,10 +57,15 @@ export interface Database {
           due_time?: string | null;
           is_completed?: boolean;
           completed_at?: string | null;
-          priority?: string;
+          priority?: 'low' | 'medium' | 'high';
           category?: string | null;
           created_at?: string;
           updated_at?: string;
+          repeat_type?: 'none' | 'daily' | 'weekly' | 'monthly' | null;
+          repeat_frequency?: number | null;
+          repeat_days?: number[] | null;
+          repeat_ends?: string | null;
+          labels?: string[] | null;
         };
       };
       subtasks: {
@@ -179,6 +194,103 @@ export interface Database {
           habit_id?: string;
           date?: string;
           completed?: boolean;
+        };
+      };
+      user_profiles: {
+        Row: {
+          id: string;
+          first_name: string | null;
+          last_name: string | null;
+          display_name: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          timezone: string;
+          language: string;
+          theme: string;
+          notification_preferences: {
+            email: boolean;
+            push: boolean;
+            reminders: boolean;
+          };
+          work_hours: {
+            start: string;
+            end: string;
+            days: number[];
+          };
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          first_name?: string | null;
+          last_name?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          timezone?: string;
+          language?: string;
+          theme?: string;
+          notification_preferences?: {
+            email: boolean;
+            push: boolean;
+            reminders: boolean;
+          };
+          work_hours?: {
+            start: string;
+            end: string;
+            days: number[];
+          };
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          first_name?: string | null;
+          last_name?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          timezone?: string;
+          language?: string;
+          theme?: string;
+          notification_preferences?: {
+            email: boolean;
+            push: boolean;
+            reminders: boolean;
+          };
+          work_hours?: {
+            start: string;
+            end: string;
+            days: number[];
+          };
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      labels: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          color: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          color: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          color?: string;
+          created_at?: string;
+          updated_at?: string;
         };
       };
     };

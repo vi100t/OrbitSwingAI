@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +16,7 @@ import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
 import GlassCard from '@/components/ui/GlassCard';
-import { useTasks } from '@/hooks/useSupabase';
+import { useTasks, useSupabase } from '@/hooks/useSupabase';
 import { Task } from '@/types/task';
 import {
   Calendar,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
+import { LabelSelector } from '@/components/LabelSelector';
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -45,6 +47,16 @@ export default function TaskDetailScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [repeatType, setRepeatType] = useState<
+    'none' | 'daily' | 'weekly' | 'monthly'
+  >('none');
+  const [repeatFrequency, setRepeatFrequency] = useState(1);
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatEnds, setRepeatEnds] = useState<Date | null>(null);
+  const [showRepeatEndsDatePicker, setShowRepeatEndsDatePicker] =
+    useState(false);
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const { labels, loadingLabels, fetchLabels } = useSupabase();
 
   useEffect(() => {
     if (id) {
@@ -57,44 +69,51 @@ export default function TaskDetailScreen() {
         setDueTime(
           foundTask.due_time ? dayjs(foundTask.due_time).toDate() : null
         );
-        setPriority(foundTask.priority as 'low' | 'medium' | 'high');
-        setIsCompleted(foundTask.is_completed);
-        setSubtasks(
-          (foundTask as Task).subtasks?.map(
-            (st: { id: string; title: string; is_completed: boolean }) => ({
-              id: st.id,
-              title: st.title,
-              isCompleted: st.is_completed,
-            })
-          ) || []
+        setPriority(foundTask.priority);
+        setRepeatType(foundTask.repeat_type);
+        setRepeatFrequency(foundTask.repeat_frequency);
+        setRepeatDays(foundTask.repeat_days || []);
+        setRepeatEnds(
+          foundTask.repeat_ends ? dayjs(foundTask.repeat_ends).toDate() : null
         );
+        setSelectedLabels(foundTask.labels || []);
+        setSubtasks(foundTask.subtasks || []);
       }
     }
   }, [id, tasks]);
 
+  useEffect(() => {
+    fetchLabels();
+  }, []);
+
   const handleSave = async () => {
     if (!task) return;
+
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a title');
+      return;
+    }
 
     try {
       await updateTask(task.id, {
         title: title.trim(),
         description: description.trim() || null,
-        due_date: dayjs(dueDate).format('YYYY-MM-DD'),
+        due_date: dueDate ? dayjs(dueDate).format('YYYY-MM-DD') : undefined,
         due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : null,
         priority,
-        is_completed: isCompleted,
-        updated_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-        subtasks: subtasks.map((subtask) => ({
-          id: subtask.id,
-          title: subtask.title,
-          is_completed: subtask.isCompleted,
-          task_id: task.id,
-          created_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-        })),
+        repeat_type: repeatType,
+        repeat_frequency: repeatFrequency,
+        repeat_days: repeatType === 'weekly' ? repeatDays : undefined,
+        repeat_ends: repeatEnds
+          ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss')
+          : undefined,
+        labels: selectedLabels,
       });
+
       router.back();
     } catch (error) {
-      console.error('Error saving task:', error);
+      console.error('Error updating task:', error);
+      Alert.alert('Error', 'Failed to update task');
     }
   };
 
@@ -206,6 +225,20 @@ export default function TaskDetailScreen() {
     </TouchableOpacity>
   );
 
+  const handleLabelSelect = (labelId: string) => {
+    setSelectedLabels((prev) =>
+      prev.includes(labelId)
+        ? prev.filter((id) => id !== labelId)
+        : [...prev, labelId]
+    );
+  };
+
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    if (selectedTime) {
+      setDueTime(selectedTime);
+    }
+  };
+
   if (!task) {
     return (
       <GlassBg>
@@ -237,6 +270,7 @@ export default function TaskDetailScreen() {
               <TouchableOpacity
                 onPress={handleSave}
                 style={[styles.headerButton, styles.saveButton]}
+                disabled={!title.trim()}
               >
                 <Text style={styles.saveButtonText}>Save</Text>
               </TouchableOpacity>
@@ -296,6 +330,205 @@ export default function TaskDetailScreen() {
                 <PriorityButton value="medium" label="Medium" />
                 <PriorityButton value="high" label="High" />
               </View>
+            </View>
+
+            <View style={styles.labelsContainer}>
+              <View style={styles.labelsHeader}>
+                <Text style={styles.sectionTitle}>Labels</Text>
+                <TouchableOpacity
+                  style={styles.addLabelButton}
+                  onPress={() => router.push('/labels')}
+                >
+                  <Plus size={20} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.labelsList}>
+                {labels.map((label) => (
+                  <TouchableOpacity
+                    key={label.id}
+                    style={[
+                      styles.labelItem,
+                      { backgroundColor: label.color + '20' },
+                      selectedLabels.includes(label.id) && {
+                        backgroundColor: label.color + '40',
+                      },
+                    ]}
+                    onPress={() => handleLabelSelect(label.id)}
+                  >
+                    <View
+                      style={[
+                        styles.labelColor,
+                        { backgroundColor: label.color },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.labelText,
+                        { color: label.color },
+                        selectedLabels.includes(label.id) &&
+                          styles.selectedLabelText,
+                      ]}
+                    >
+                      {label.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.repeatContainer}>
+              <View style={styles.repeatHeader}>
+                <Text style={styles.sectionTitle}>Repeat</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleSwitch,
+                    repeatType !== 'none' && styles.toggleSwitchActive,
+                  ]}
+                  onPress={() =>
+                    setRepeatType(repeatType === 'none' ? 'daily' : 'none')
+                  }
+                >
+                  <View
+                    style={[
+                      styles.toggleKnob,
+                      repeatType !== 'none' && styles.toggleKnobActive,
+                    ]}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {repeatType !== 'none' && (
+                <>
+                  <View style={styles.repeatButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'daily' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('daily')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'daily' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Daily
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'weekly' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('weekly')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'weekly' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Weekly
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.repeatButton,
+                        repeatType === 'monthly' && styles.repeatButtonActive,
+                      ]}
+                      onPress={() => setRepeatType('monthly')}
+                    >
+                      <Text
+                        style={[
+                          styles.repeatButtonText,
+                          repeatType === 'monthly' &&
+                            styles.repeatButtonTextActive,
+                        ]}
+                      >
+                        Monthly
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.repeatOptions}>
+                    <View style={styles.repeatFrequency}>
+                      <Text style={styles.repeatLabel}>Repeat every</Text>
+                      <View style={styles.frequencyInput}>
+                        <TextInput
+                          style={styles.frequencyText}
+                          value={repeatFrequency.toString()}
+                          onChangeText={(text) => {
+                            const num = parseInt(text);
+                            if (!isNaN(num) && num > 0) {
+                              setRepeatFrequency(num);
+                            }
+                          }}
+                          keyboardType="number-pad"
+                        />
+                        <Text style={styles.frequencyUnit}>
+                          {repeatType === 'daily'
+                            ? 'days'
+                            : repeatType === 'weekly'
+                            ? 'weeks'
+                            : 'months'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {repeatType === 'weekly' && (
+                      <View style={styles.weekDays}>
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(
+                          (day, index) => (
+                            <TouchableOpacity
+                              key={day}
+                              style={[
+                                styles.weekDay,
+                                repeatDays.includes(index) &&
+                                  styles.weekDayActive,
+                              ]}
+                              onPress={() => {
+                                if (repeatDays.includes(index)) {
+                                  setRepeatDays(
+                                    repeatDays.filter((d) => d !== index)
+                                  );
+                                } else {
+                                  setRepeatDays([...repeatDays, index]);
+                                }
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.weekDayText,
+                                  repeatDays.includes(index) &&
+                                    styles.weekDayTextActive,
+                                ]}
+                              >
+                                {day}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        )}
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.endsContainer}
+                      onPress={() => setShowRepeatEndsDatePicker(true)}
+                    >
+                      <Text style={styles.endsLabel}>Ends</Text>
+                      <Text style={styles.endsValue}>
+                        {repeatEnds
+                          ? dayjs(repeatEnds).format('MMM D, YYYY')
+                          : 'Never'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
 
             <View style={styles.subtasksContainer}>
@@ -367,30 +600,74 @@ export default function TaskDetailScreen() {
         </ScrollView>
 
         {showDatePicker && (
-          <DateTimePicker
-            value={dueDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={(event, selectedDate) => {
-              setShowDatePicker(false);
-              if (selectedDate) {
-                setDueDate(selectedDate);
-              }
-            }}
-          />
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowDatePicker(false)}
+          >
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity
+                  style={styles.pickerDoneButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={dueDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    setDueDate(selectedDate);
+                  }
+                }}
+                style={{}}
+              />
+            </View>
+          </TouchableOpacity>
         )}
 
         {showTimePicker && (
-          <View style={styles.timePickerContainer}>
-            <View style={styles.timePickerModal}>
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowTimePicker(false)}
+          >
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity
+                  style={styles.pickerDoneButton}
+                  onPress={() => setShowTimePicker(false)}
+                >
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
               <DateTimePicker
                 value={dueTime || new Date()}
                 mode="time"
+                is24Hour={false}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleTimeChange}
+                style={{}}
+              />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {showRepeatEndsDatePicker && (
+          <View style={styles.repeatEndsContainer}>
+            <View style={styles.repeatEndsModal}>
+              <DateTimePicker
+                value={repeatEnds || new Date()}
+                mode="date"
                 display="spinner"
-                onChange={(event, selectedTime) => {
-                  if (selectedTime) {
-                    setDueTime(selectedTime);
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    setRepeatEnds(selectedDate);
                   }
+                  setShowRepeatEndsDatePicker(false);
                 }}
                 textColor={Colors.text}
                 themeVariant="light"
@@ -401,19 +678,19 @@ export default function TaskDetailScreen() {
                   width: 200,
                 }}
               />
-              <View style={styles.timePickerButtons}>
+              <View style={styles.repeatEndsButtons}>
                 <TouchableOpacity
-                  style={[styles.timePickerButton, styles.cancelButton]}
-                  onPress={() => setShowTimePicker(false)}
+                  style={[styles.repeatEndsButton, styles.cancelButton]}
+                  onPress={() => setShowRepeatEndsDatePicker(false)}
                 >
-                  <Text style={styles.timePickerButtonText}>Cancel</Text>
+                  <Text style={styles.repeatEndsButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.timePickerButton, styles.doneButton]}
-                  onPress={() => setShowTimePicker(false)}
+                  style={[styles.repeatEndsButton, styles.doneButton]}
+                  onPress={() => setShowRepeatEndsDatePicker(false)}
                 >
                   <Text
-                    style={[styles.timePickerButtonText, styles.doneButtonText]}
+                    style={[styles.repeatEndsButtonText, styles.doneButtonText]}
                   >
                     Done
                   </Text>
@@ -491,12 +768,12 @@ const styles = StyleSheet.create({
   priorityButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 4,
   },
   priorityButton: {
     flex: 1,
     padding: 12,
     borderRadius: 8,
-    marginHorizontal: 4,
     alignItems: 'center',
     borderWidth: 2,
   },
@@ -506,6 +783,9 @@ const styles = StyleSheet.create({
   priorityButtonText: {
     fontFamily: 'Inter-Medium',
     fontSize: 14,
+  },
+  priorityButtonTextActive: {
+    color: Colors.primary,
   },
   deleteButton: {
     backgroundColor: 'rgba(255, 59, 48, 0.1)',
@@ -582,7 +862,191 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
   },
-  timePickerContainer: {
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    maxHeight: 300,
+  },
+  pickerHeader: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 2,
+  },
+  pickerDoneButton: {
+    padding: 8,
+  },
+  pickerDoneText: {
+    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  repeatContainer: {
+    marginBottom: 20,
+  },
+  repeatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 4,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    padding: 2,
+  },
+  toggleSwitchActive: {
+    backgroundColor: Colors.primary,
+  },
+  toggleKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  toggleKnobActive: {
+    transform: [{ translateX: 22 }],
+  },
+  repeatButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 4,
+  },
+  repeatButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+  },
+  repeatButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  repeatButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  repeatButtonTextActive: {
+    color: '#fff',
+  },
+  repeatOptions: {
+    marginTop: 16,
+  },
+  repeatFrequency: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  repeatLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+    marginRight: 12,
+  },
+  frequencyInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  frequencyText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+    width: 40,
+    textAlign: 'center',
+  },
+  frequencyUnit: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.primary,
+    marginLeft: 4,
+  },
+  weekDays: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  weekDay: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+  },
+  weekDayActive: {
+    backgroundColor: Colors.primary,
+  },
+  weekDayText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  weekDayTextActive: {
+    color: '#fff',
+  },
+  endsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+  },
+  endsLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.text,
+  },
+  endsValue: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  repeatEndsContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -592,37 +1056,86 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  timePickerModal: {
+  repeatEndsModal: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
   },
-  timePickerButtons: {
+  repeatEndsButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
     marginTop: 16,
     gap: 12,
   },
-  timePickerButton: {
+  repeatEndsButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  doneButton: {
-    backgroundColor: Colors.primary,
-  },
-  timePickerButtonText: {
+  repeatEndsButtonText: {
     fontFamily: 'Inter-Medium',
     fontSize: 16,
     color: Colors.text,
   },
-  doneButtonText: {
-    color: '#fff',
+  labelsContainer: {
+    marginBottom: 20,
+  },
+  labelsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addLabelButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  labelsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  labelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 77, 255, 0.2)',
+  },
+  labelColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  labelText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+  },
+  selectedLabelText: {
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    textAlign: 'center',
+    padding: 12,
+  },
+  noLabelsText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.secondaryText,
+    textAlign: 'center',
+    padding: 12,
   },
 });
