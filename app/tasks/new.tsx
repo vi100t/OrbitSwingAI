@@ -100,14 +100,13 @@ export default function NewTaskScreen() {
         due_date: dueDate ? dayjs(dueDate).format('YYYY-MM-DD') : undefined,
         due_time: dueTime ? dayjs(dueTime).format('HH:mm:ss') : undefined,
         priority: priority,
-        status: 'pending',
         repeat_type: repeatType,
         repeat_frequency: repeatFrequency,
         repeat_days: repeatType === 'weekly' ? repeatDays : undefined,
         repeat_ends: repeatEnds
           ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss')
           : undefined,
-        labels: selectedLabels,
+        labels: selectedLabels.map((id) => id),
         user_id: session.user.id,
       };
 
@@ -160,17 +159,16 @@ export default function NewTaskScreen() {
   };
 
   const handleLabelSelect = (labelId: string) => {
-    setSelectedLabels((prev) =>
-      prev.includes(labelId)
-        ? prev.filter((id) => id !== labelId)
-        : [...prev, labelId]
-    );
+    setSelectedLabels((prev) => prev.filter((id) => id !== labelId));
   };
 
   const handleNavigateToLabels = () => {
     router.push({
       pathname: '/labels',
-      params: { selectedLabels: JSON.stringify(selectedLabels) },
+      params: {
+        selectedLabels: JSON.stringify([]),
+        from: 'new',
+      },
     });
   };
 
@@ -317,6 +315,9 @@ export default function NewTaskScreen() {
                         style={[
                           styles.labelItem,
                           { backgroundColor: label.color + '20' },
+                          selectedLabels.includes(label.id) && {
+                            backgroundColor: label.color + '40',
+                          },
                         ]}
                         onPress={() => handleLabelSelect(label.id)}
                       >
@@ -327,7 +328,12 @@ export default function NewTaskScreen() {
                           ]}
                         />
                         <Text
-                          style={[styles.labelText, { color: label.color }]}
+                          style={[
+                            styles.labelText,
+                            { color: label.color },
+                            selectedLabels.includes(label.id) &&
+                              styles.selectedLabelText,
+                          ]}
                         >
                           {label.name}
                         </Text>

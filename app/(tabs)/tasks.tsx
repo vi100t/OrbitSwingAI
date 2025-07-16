@@ -19,7 +19,7 @@ import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
 import { Plus, Search } from 'lucide-react-native';
 import TaskItem from '@/components/tasks/TaskItem';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import SearchBar from '@/components/shared/SearchBar';
 import { useTasks } from '@/hooks/useSupabase';
 import { Task } from '@/types/task';
@@ -44,6 +44,12 @@ export default function TasksScreen() {
   const pullDistance = React.useRef(new Animated.Value(0)).current;
   const searchInputWidth = React.useRef(new Animated.Value(40)).current;
   const searchInputOpacity = React.useRef(new Animated.Value(0)).current;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshTasks();
+    }, [])
+  );
 
   useEffect(() => {
     Animated.parallel([

@@ -1,44 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import {
+  StyleSheet,
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
   TextInput,
-  Alert,
+  TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import GlassBg from '@/components/ui/GlassBg';
 import Header from '@/components/shared/Header';
 import Colors from '@/constants/Colors';
 import GlassCard from '@/components/ui/GlassCard';
-import { useSupabase } from '@/hooks/useSupabase';
 import { Plus, X } from 'lucide-react-native';
+import { useSupabase } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 const COLORS = [
-  '#FF6B6B', // Red
-  '#FF9F43', // Orange
-  '#FFD93D', // Yellow
-  '#6BCB77', // Green
-  '#4D96FF', // Blue
-  '#9B59B6', // Purple
-  '#E84393', // Pink
-  '#00B894', // Teal
+  '#7C4DFF', // Purple
+  '#FF4081', // Pink
+  '#FF6D00', // Orange
+  '#00BFA5', // Teal
+  '#FFD600', // Yellow
+  '#2979FF', // Blue
+  '#FF1744', // Red
+  '#00E676', // Green
 ];
 
 export default function LabelsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { labels, createLabel, deleteLabel, fetchLabels } = useSupabase();
   const { session } = useAuth();
   const [newLabelName, setNewLabelName] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
 
   useEffect(() => {
     fetchLabels();
   }, []);
+
+  useEffect(() => {
+    if (params.selectedLabels) {
+      try {
+        const parsedLabels = JSON.parse(params.selectedLabels as string);
+        setSelectedLabels(parsedLabels);
+      } catch (error) {
+        console.error('Error parsing selected labels:', error);
+      }
+    }
+  }, [params.selectedLabels]);
 
   const handleCreateLabel = async () => {
     if (!newLabelName.trim()) {
@@ -67,16 +80,47 @@ export default function LabelsScreen() {
   const handleDeleteLabel = async (labelId: string) => {
     try {
       await deleteLabel(labelId);
+      setSelectedLabels((prev) => prev.filter((id) => id !== labelId));
     } catch (error) {
       console.error('Error deleting label:', error);
       Alert.alert('Error', 'Failed to delete label');
     }
   };
 
+  const handleLabelSelect = (labelId: string) => {
+    setSelectedLabels((prev) =>
+      prev.includes(labelId)
+        ? prev.filter((id) => id !== labelId)
+        : [...prev, labelId]
+    );
+  };
+
+  const handleSave = () => {
+    const path =
+      params.from === 'edit' ? `/tasks/${params.taskId}` : '/tasks/new';
+    router.push({
+      pathname: path,
+      params: {
+        selectedLabels: JSON.stringify(selectedLabels),
+        from: params.from,
+        taskId: params.taskId,
+      },
+    });
+  };
+
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title="Labels" showBack showNotifications={false} />
+        <Header
+          title="Labels"
+          showBack
+          showNotifications={false}
+          rightComponent={
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Text style={styles.saveButtonText}>Done</Text>
+            </TouchableOpacity>
+          }
+        />
 
         <ScrollView
           style={styles.content}
@@ -116,16 +160,34 @@ export default function LabelsScreen() {
 
             <View style={styles.labelsList}>
               {labels.map((label) => (
-                <View key={label.id} style={styles.labelItem}>
-                  <View style={styles.labelInfo}>
+                <View
+                  key={label.id}
+                  style={[
+                    styles.labelItem,
+                    selectedLabels.includes(label.id) &&
+                      styles.selectedLabelItem,
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={styles.labelInfo}
+                    onPress={() => handleLabelSelect(label.id)}
+                  >
                     <View
                       style={[
                         styles.labelColor,
                         { backgroundColor: label.color },
                       ]}
                     />
-                    <Text style={styles.labelName}>{label.name}</Text>
-                  </View>
+                    <Text
+                      style={[
+                        styles.labelName,
+                        selectedLabels.includes(label.id) &&
+                          styles.selectedLabelName,
+                      ]}
+                    >
+                      {label.name}
+                    </Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={() => handleDeleteLabel(label.id)}
@@ -207,10 +269,14 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
   },
+  selectedLabelItem: {
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+  },
   labelInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flex: 1,
   },
   labelColor: {
     width: 16,
@@ -222,7 +288,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
   },
+  selectedLabelName: {
+    color: Colors.primary,
+    fontWeight: '600',
+  },
   deleteButton: {
     padding: 4,
+    marginLeft: 8,
+  },
+  saveButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

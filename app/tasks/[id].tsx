@@ -29,9 +29,11 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
 import { LabelSelector } from '@/components/LabelSelector';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
   const router = useRouter();
   const { tasks, updateTask, deleteTask, generateSubtasks } = useTasks();
   const [task, setTask] = useState<Task | null>(null);
@@ -62,6 +64,7 @@ export default function TaskDetailScreen() {
     if (id) {
       const foundTask = tasks.find((t) => t.id === id);
       if (foundTask) {
+        console.log('Loading task:', foundTask);
         setTask(foundTask);
         setTitle(foundTask.title);
         setDescription(foundTask.description || '');
@@ -76,15 +79,40 @@ export default function TaskDetailScreen() {
         setRepeatEnds(
           foundTask.repeat_ends ? dayjs(foundTask.repeat_ends).toDate() : null
         );
-        setSelectedLabels(foundTask.labels || []);
-        setSubtasks(foundTask.subtasks || []);
+        if (!params.selectedLabels) {
+          setSelectedLabels(foundTask.labels || []);
+        }
+        // Initialize subtasks with proper structure
+        const initialSubtasks =
+          foundTask.subtasks?.map((subtask) => ({
+            id: subtask.id || uuidv4(),
+            title: subtask.title,
+            isCompleted: subtask.isCompleted || false,
+          })) || [];
+        console.log('Initializing subtasks:', initialSubtasks);
+        setSubtasks(initialSubtasks);
       }
     }
-  }, [id, tasks]);
+  }, [id, tasks, params.selectedLabels]);
 
   useEffect(() => {
     fetchLabels();
   }, []);
+
+  useEffect(() => {
+    if (params.selectedLabels) {
+      try {
+        const parsedLabels = JSON.parse(params.selectedLabels as string);
+        console.log('Received selected labels:', parsedLabels);
+        setSelectedLabels(parsedLabels);
+      } catch (error) {
+        console.error('Error parsing selected labels:', error);
+      }
+    }
+  }, [params.selectedLabels]);
+
+  console.log('Current labels:', labels);
+  console.log('Selected labels:', selectedLabels);
 
   const handleSave = async () => {
     if (!task) return;
@@ -107,7 +135,12 @@ export default function TaskDetailScreen() {
         repeat_ends: repeatEnds
           ? dayjs(repeatEnds).format('YYYY-MM-DD HH:mm:ss')
           : undefined,
-        labels: selectedLabels,
+        labels: selectedLabels.map((id) => id),
+        subtasks: subtasks.map((subtask) => ({
+          id: subtask.id,
+          title: subtask.title,
+          isCompleted: subtask.isCompleted,
+        })),
       });
 
       router.back();
@@ -125,28 +158,31 @@ export default function TaskDetailScreen() {
 
   const handleAddSubtask = () => {
     if (newSubtask.trim()) {
-      setSubtasks([
-        ...subtasks,
-        {
-          id: Math.random().toString(),
-          title: newSubtask.trim(),
-          isCompleted: false,
-        },
-      ]);
+      const newSubtaskItem = {
+        id: uuidv4(),
+        title: newSubtask.trim(),
+        isCompleted: false,
+      };
+      console.log('Adding new subtask:', newSubtaskItem);
+      setSubtasks((prev) => [...prev, newSubtaskItem]);
       setNewSubtask('');
     }
   };
 
+  const handleSubtaskSubmit = () => {
+    handleAddSubtask();
+  };
+
   const toggleSubtask = (subtaskId: string) => {
-    setSubtasks(
-      subtasks.map((st) =>
+    setSubtasks((prev) =>
+      prev.map((st) =>
         st.id === subtaskId ? { ...st, isCompleted: !st.isCompleted } : st
       )
     );
   };
 
   const removeSubtask = (subtaskId: string) => {
-    setSubtasks(subtasks.filter((st) => st.id !== subtaskId));
+    setSubtasks((prev) => prev.filter((st) => st.id !== subtaskId));
   };
 
   const handleGenerateSubtasks = async () => {
@@ -226,17 +262,24 @@ export default function TaskDetailScreen() {
   );
 
   const handleLabelSelect = (labelId: string) => {
-    setSelectedLabels((prev) =>
-      prev.includes(labelId)
-        ? prev.filter((id) => id !== labelId)
-        : [...prev, labelId]
-    );
+    setSelectedLabels((prev) => prev.filter((id) => id !== labelId));
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
     if (selectedTime) {
       setDueTime(selectedTime);
     }
+  };
+
+  const handleNavigateToLabels = () => {
+    router.push({
+      pathname: '/labels',
+      params: {
+        selectedLabels: JSON.stringify(selectedLabels),
+        from: 'edit',
+        taskId: id,
+      },
+    });
   };
 
   if (!task) {
@@ -337,43 +380,51 @@ export default function TaskDetailScreen() {
                 <Text style={styles.sectionTitle}>Labels</Text>
                 <TouchableOpacity
                   style={styles.addLabelButton}
-                  onPress={() => router.push('/labels')}
+                  onPress={handleNavigateToLabels}
                 >
                   <Plus size={20} color={Colors.primary} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.labelsList}>
-                {labels.map((label) => (
-                  <TouchableOpacity
-                    key={label.id}
-                    style={[
-                      styles.labelItem,
-                      { backgroundColor: label.color + '20' },
-                      selectedLabels.includes(label.id) && {
-                        backgroundColor: label.color + '40',
-                      },
-                    ]}
-                    onPress={() => handleLabelSelect(label.id)}
-                  >
-                    <View
-                      style={[
-                        styles.labelColor,
-                        { backgroundColor: label.color },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.labelText,
-                        { color: label.color },
-                        selectedLabels.includes(label.id) &&
-                          styles.selectedLabelText,
-                      ]}
-                    >
-                      {label.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {loadingLabels ? (
+                  <Text style={styles.loadingText}>Loading labels...</Text>
+                ) : labels.length === 0 ? (
+                  <Text style={styles.noLabelsText}>No labels available</Text>
+                ) : (
+                  labels
+                    .filter((label) => selectedLabels.includes(label.id))
+                    .map((label) => (
+                      <TouchableOpacity
+                        key={label.id}
+                        style={[
+                          styles.labelItem,
+                          { backgroundColor: label.color + '20' },
+                          selectedLabels.includes(label.id) && {
+                            backgroundColor: label.color + '40',
+                          },
+                        ]}
+                        onPress={() => handleLabelSelect(label.id)}
+                      >
+                        <View
+                          style={[
+                            styles.labelColor,
+                            { backgroundColor: label.color },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.labelText,
+                            { color: label.color },
+                            selectedLabels.includes(label.id) &&
+                              styles.selectedLabelText,
+                          ]}
+                        >
+                          {label.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                )}
               </View>
             </View>
 
@@ -590,9 +641,17 @@ export default function TaskDetailScreen() {
                     onChangeText={setNewSubtask}
                     placeholder="Add subtask"
                     placeholderTextColor={Colors.secondaryText}
-                    onSubmitEditing={handleAddSubtask}
+                    onSubmitEditing={handleSubtaskSubmit}
                     returnKeyType="done"
                   />
+                  {newSubtask.trim() && (
+                    <TouchableOpacity
+                      style={styles.addSubtaskButton}
+                      onPress={handleAddSubtask}
+                    >
+                      <Plus size={20} color={Colors.primary} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -853,6 +912,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
   },
+  addSubtaskButton: {
+    padding: 4,
+  },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1075,10 +1137,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  cancelButton: {
+    backgroundColor: 'rgba(124, 77, 255, 0.1)',
+  },
+  doneButton: {
+    backgroundColor: Colors.primary,
+  },
   repeatEndsButtonText: {
     fontFamily: 'Inter-Medium',
     fontSize: 16,
     color: Colors.text,
+  },
+  doneButtonText: {
+    color: '#fff',
   },
   labelsContainer: {
     marginBottom: 20,

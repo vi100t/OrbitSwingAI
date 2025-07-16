@@ -23,7 +23,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function CalendarScreen() {
   const { tasks, loading } = useTasks();
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [selectedDate, setSelectedDate] = useState(
+    dayjs().format('YYYY-MM-DD')
+  );
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const router = useRouter();
 
@@ -93,18 +95,6 @@ export default function CalendarScreen() {
           rightComponent={
             <View style={styles.headerButtons}>
               <TouchableOpacity
-                style={styles.viewModeButton}
-                onPress={() =>
-                  setViewMode(viewMode === 'calendar' ? 'list' : 'calendar')
-                }
-              >
-                {viewMode === 'calendar' ? (
-                  <List size={20} color={Colors.text} />
-                ) : (
-                  <CalendarIcon size={20} color={Colors.text} />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => router.push('/tasks/new')}
               >
@@ -173,7 +163,9 @@ export default function CalendarScreen() {
                         color={Colors.secondaryText}
                         style={styles.emptyIcon}
                       />
-                      <Text style={styles.emptyText}>No tasks for this day</Text>
+                      <Text style={styles.emptyText}>
+                        No tasks for this day
+                      </Text>
                     </View>
                   )}
                 </ScrollView>

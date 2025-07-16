@@ -132,7 +132,20 @@ export default function NotesScreen() {
   return (
     <GlassBg>
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title="Notes" showVoice={true} />
+        <Header
+          title="Notes"
+          showVoice={true}
+          rightComponent={
+            <View>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => router.push('/notes/new')}
+              >
+                <Plus size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          }
+        />
 
         <View style={styles.contentContainer}>
           <View style={styles.searchRow}>
@@ -154,13 +167,6 @@ export default function NotesScreen() {
                 <Text style={styles.searchButtonText}>Search notes</Text>
               </TouchableOpacity>
             )}
-
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => router.push('/notes/new')}
-            >
-              <Plus size={20} color="#fff" />
-            </TouchableOpacity>
           </View>
 
           <Animated.View
@@ -173,25 +179,29 @@ export default function NotesScreen() {
               },
             ]}
           >
-            <ScrollView
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              contentContainerStyle={styles.notesList}
-            >
-              {sortedNotes.length > 0 ? (
-                renderMasonryLayout()
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No notes found</Text>
-                  <TouchableOpacity
-                    style={styles.emptyButton}
-                    onPress={() => router.push('/notes/new')}
-                  >
-                    <Text style={styles.emptyButtonText}>Create Note</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
+            <View style={styles.scrollContainer}>
+              <ScrollView
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                contentContainerStyle={styles.notesList}
+                showsVerticalScrollIndicator={true}
+                showsHorizontalScrollIndicator={false}
+              >
+                {sortedNotes.length > 0 ? (
+                  renderMasonryLayout()
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No notes found</Text>
+                    <TouchableOpacity
+                      style={styles.emptyButton}
+                      onPress={() => router.push('/notes/new')}
+                    >
+                      <Text style={styles.emptyButtonText}>Create Note</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
           </Animated.View>
 
           <PullToRefreshLoader pullDistance={pullDistance} />
@@ -259,8 +269,13 @@ const styles = StyleSheet.create({
     width: COLUMN_WIDTH,
     gap: 8,
   },
+  scrollContainer: {
+    flex: 1,
+    marginRight: -20, // Compensate for the parent's padding
+  },
   notesList: {
     paddingBottom: 100,
+    paddingRight: 20, // Add padding to the content
   },
   emptyContainer: {
     marginTop: 40,
